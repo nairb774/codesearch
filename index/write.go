@@ -593,28 +593,21 @@ func validUTF8(c1, c2 uint32) bool {
 	return false
 }
 
-// sortPost sorts the postentry list.
-// The list is already sorted by fileid (bottom 32 bits)
-// and the top 8 bits are always zero, so there are only
-// 24 bits to sort.  Run two rounds of 12-bit radix sort.
-const sortK = 12
-
-
 func sortPost(post []postEntry) {
-	var sortTmp []postEntry
+	// sortPost sorts the postentry list.
+	// The list is already sorted by fileid (bottom 32 bits)
+	// and the top 8 bits are always zero, so there are only
+	// 24 bits to sort.  Run two rounds of 12-bit radix sort.
+	const sortK = 12
+
+	tmp := make([]postEntry, len(post))
 	var sortN [1 << sortK]int
 
-	if len(post) > len(sortTmp) {
-		sortTmp = make([]postEntry, len(post))
-	}
-	tmp := sortTmp[:len(post)]
-
-	const k = sortK
 	for i := range sortN {
 		sortN[i] = 0
 	}
 	for _, p := range post {
-		r := uintptr(p>>32) & (1<<k - 1)
+		r := uintptr(p>>32) & (1<<sortK - 1)
 		sortN[r]++
 	}
 	tot := 0
@@ -623,7 +616,7 @@ func sortPost(post []postEntry) {
 		tot += count
 	}
 	for _, p := range post {
-		r := uintptr(p>>32) & (1<<k - 1)
+		r := uintptr(p>>32) & (1<<sortK - 1)
 		o := sortN[r]
 		sortN[r]++
 		tmp[o] = p
@@ -634,7 +627,7 @@ func sortPost(post []postEntry) {
 		sortN[i] = 0
 	}
 	for _, p := range post {
-		r := uintptr(p>>(32+k)) & (1<<k - 1)
+		r := uintptr(p>>(32+sortK)) & (1<<sortK - 1)
 		sortN[r]++
 	}
 	tot = 0
@@ -643,7 +636,7 @@ func sortPost(post []postEntry) {
 		tot += count
 	}
 	for _, p := range post {
-		r := uintptr(p>>(32+k)) & (1<<k - 1)
+		r := uintptr(p>>(32+sortK)) & (1<<sortK - 1)
 		o := sortN[r]
 		sortN[r]++
 		tmp[o] = p
