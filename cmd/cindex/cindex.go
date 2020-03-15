@@ -100,8 +100,7 @@ func main() {
 		a, err := filepath.Abs(arg)
 		if err != nil {
 			log.Printf("%s: %s", arg, err)
-			args[i] = ""
-			continue
+			a = ""
 		}
 		args[i] = a
 	}
