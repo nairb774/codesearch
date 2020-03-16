@@ -408,7 +408,7 @@ func mergeOr(l1, l2 []uint32) []uint32 {
 }
 
 func corrupt() {
-	log.Fatal("corrupt index: remove " + File())
+	log.Fatalf("corrupt index: remove %q", File())
 }
 
 // An mmapData is mmap'ed read-only data from a file.
