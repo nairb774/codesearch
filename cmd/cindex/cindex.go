@@ -46,10 +46,12 @@ information about other paths that might already be indexed
 (the ones printed by cindex -list).  The -reset flag causes cindex to
 delete the existing index before indexing the new paths.
 With no path arguments, cindex -reset removes the index.
+
 `
 
 func usage() {
 	fmt.Fprintf(os.Stderr, usageMessage)
+	flag.PrintDefaults()
 	os.Exit(2)
 }
 

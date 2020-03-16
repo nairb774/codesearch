@@ -21,10 +21,12 @@ Cgrep behaves like grep, searching for regexp, an RE2 (nearly PCRE) regular expr
 The -c, -h, -i, -l, and -n flags are as in grep, although note that as per Go's
 flag parsing convention, they cannot be combined: the option pair -i -n 
 cannot be abbreviated to -in.
+
 `
 
 func usage() {
 	fmt.Fprintf(os.Stderr, usageMessage)
+	flag.PrintDefaults()
 	os.Exit(2)
 }
 

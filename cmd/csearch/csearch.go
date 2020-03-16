@@ -38,10 +38,12 @@ overwrites it.  Run cindex -help for more.
 
 Csearch uses the index stored in $CSEARCHINDEX or, if that variable is unset or
 empty, $HOME/.csearchindex.
+
 `
 
 func usage() {
 	fmt.Fprintf(os.Stderr, usageMessage)
+	flag.PrintDefaults()
 	os.Exit(2)
 }
 
