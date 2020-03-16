@@ -51,11 +51,9 @@ var (
 	verboseFlag = flag.Bool("verbose", false, "print extra information")
 	bruteFlag   = flag.Bool("brute", false, "brute force - search all files in index")
 	cpuProfile  = flag.String("cpuprofile", "", "write cpu profile to this file")
-
-	matches bool
 )
 
-func Main() {
+func Main() (matches bool) {
 	g := regexp.Grep{
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
@@ -135,12 +133,11 @@ func Main() {
 		g.File(name)
 	}
 
-	matches = g.Match
+	return g.Match
 }
 
 func main() {
-	Main()
-	if !matches {
+	if matches := Main(); !matches {
 		os.Exit(1)
 	}
 	os.Exit(0)
