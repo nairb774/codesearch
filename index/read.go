@@ -387,7 +387,7 @@ func (ix *Index) postingQuery(q *Query, restrict []uint32) (ret []uint32) {
 }
 
 func mergeOr(l1, l2 []uint32) []uint32 {
-	var l []uint32
+	l := make([]uint32, 0, len(l1)+len(l2))
 	i := 0
 	j := 0
 	for i < len(l1) || j < len(l2) {
