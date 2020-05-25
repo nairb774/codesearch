@@ -1,0 +1,47 @@
+struct GitHash {
+  a: uint32;
+  b: uint32;
+  c: uint32;
+  d: uint32;
+  e: uint32;
+}
+
+enum DocType : byte {
+  Regular = 0,
+  Executable,
+  Symlink
+}
+
+table Doc {
+  path: string (required);
+  size: uint64;
+  mod_ns: int64;
+  hash: GitHash;
+  type: DocType;
+
+  // Maps the block number to the number of the line containing the first byte
+  // of the block.
+  block_to_line: [uint32];
+
+  data: [ubyte];
+}
+
+table PostingList {
+  docs: [ubyte] (required);
+}
+
+table PostingLists {
+  // The length of `trigrams` and `lists*3` must be the same. Think of this as
+  // a parallel map. The `trigram` values must be in sorted order.
+  trigrams: [ubyte];
+  lists: [PostingList];
+  max_doc_id: uint32;
+}
+
+table IndexShard {
+  docs: [Doc] (required); 
+  lists: PostingLists (required);
+}
+
+// root_type IndexShard;
+// file_identifier "IXS2";

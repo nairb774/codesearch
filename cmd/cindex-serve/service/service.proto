@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+option go_package = "github.com/nairb774/codesearch/cmd/cindex-serve/service";
+
+package codesearch;
+
+message Doc {
+  uint32 id = 1;
+  string path = 2;
+
+  repeated Snippet snippets = 3;
+}
+
+message Snippet {
+  string lines = 1;
+  uint32 first_line = 2;
+  repeated uint32 matches = 3;
+}
+
+message SearchRequest {
+  // Required.
+  string shard_id = 1;
+  string expression = 2;
+}
+
+message SearchResponse {
+  repeated Doc docs = 1;
+
+  // matches contains either the total number of docs that matched (if the
+  // number == len(docs)) or the possible number of matches. Were all possible
+  // docs to be inspected.
+  uint32 matches = 2;
+
+  // Indicates the number of docs inspected to return the results.
+  uint32 docs_inspected = 3;
+}
+
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse) {}
+}
