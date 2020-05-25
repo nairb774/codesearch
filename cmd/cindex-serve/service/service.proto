@@ -12,18 +12,23 @@ message Doc {
 }
 
 message Snippet {
+  // One or more lines, separated by '\n' containing matching results.
   string lines = 1;
+
+  // Line number of the first line in the snippet.
   uint32 first_line = 2;
+
+  // Pairs of byte offsets indicating matches.
   repeated uint32 matches = 3;
 }
 
-message SearchRequest {
+message SearchShardRequest {
   // Required.
   string shard_id = 1;
   string expression = 2;
 }
 
-message SearchResponse {
+message SearchShardResponse {
   repeated Doc docs = 1;
 
   // matches contains either the total number of docs that matched (if the
@@ -35,6 +40,109 @@ message SearchResponse {
   uint32 docs_inspected = 3;
 }
 
-service SearchService {
-  rpc Search(SearchRequest) returns (SearchResponse) {}
+service SearchShardService {
+  rpc SearchShard(SearchShardRequest) returns (SearchShardResponse) {}
+}
+
+// Shard represents an index shard.
+message Shard {
+  string id = 1;
+
+  string tree_hash = 2;
+
+  State state = 3;
+  enum State {
+    UNKNOWN = 0;
+
+    // The shard has been allocated, but has not yet been marked as done being
+    // created. The actual contents of the shard may not exist, or may be
+    // incomplete.
+    CREATING = 1;
+
+    // The shard has been completed, and is not being used by any repositories.
+    // Shards in the UNREFERENCED state may be garbage collected.
+    UNREFERENCED = 2;
+
+    // The shard is referenced by one or more repoositories. The shard should
+    // not be deleted.
+    REFERENCED = 3;
+
+    // The shard is going through the process of being removed.
+    DELETING = 4;
+  }
+
+  // The size is only valid when the shard is not in the CREATING state.
+  uint64 size = 4;
+
+  // The hash is only valid when the shard is not in the CREATING state.
+  string sha256 = 5;
+}
+
+message AllocateShardRequest {
+  // The tree hash of the index being created. There can be multiple shards
+  // with the same tree_hash.
+  string tree_hash = 1;
+}
+
+message AllocateShardResponse {
+  // The current state of the newly allocated shard.
+  Shard shard = 1;
+}
+
+message CompleteShardRequest {
+  // The shard_id to mark completed.
+  string shard_id = 1;
+
+  // The final size of the generated shard.
+  uint64 size = 2;
+
+  // The sha256 sum of the shard contents.
+  string sha256 = 3;
+}
+
+message CompleteShardResponse {
+}
+
+message GetShardRequest {
+  string shard_id = 1;
+}
+
+message GetShardResponse {
+  Shard shard = 1;
+}
+
+message SearchShardsRequest {
+  // If set only shards matching this tree hash will be returned.
+  string tree_hash = 1;
+}
+
+message SearchShardsResponse {
+  // List of matching shard_ids.
+  repeated string shard_ids = 1;
+}
+
+message UpdateRepoShardRequest {
+  // The name of the repository to update.
+  string repo = 1;
+
+  // The name of the revision (tag, branch, ref, ...).
+  string revision = 2;
+
+  // The commit hash of the revision (for detecting the need to index).
+  string commit_hash = 3;
+
+  // The shard_id to map to. Must be in the UNREFERENCED or REFERENCED state.
+  string shard_id = 4;
+}
+
+message UpdateRepoShardResponse {
+}
+
+service IndexMetadataService {
+  rpc AllocateShard(AllocateShardRequest) returns (AllocateShardResponse) {}
+  rpc CompleteShard(CompleteShardRequest) returns (CompleteShardResponse) {}
+  rpc GetShard(GetShardRequest) returns (GetShardResponse) {}
+  rpc SearchShards(SearchShardsRequest) returns (SearchShardsResponse) {}
+
+  rpc UpdateRepoShard(UpdateRepoShardRequest) returns (UpdateRepoShardResponse) {}
 }

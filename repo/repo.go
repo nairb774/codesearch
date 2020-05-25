@@ -104,7 +104,7 @@ func (m *Manifest) ReferencableShard(hash plumbing.Hash) (ShardID, bool) {
 	return ShardID{}, false
 }
 
-func (m *Manifest) CreateShard(hash plumbing.Hash) (ShardID, *Shard) {
+func (m *Manifest) CreateShard(hash plumbing.Hash) ShardID {
 	var id ShardID
 	for {
 		id = ShardID(rid())
@@ -123,7 +123,7 @@ func (m *Manifest) CreateShard(hash plumbing.Hash) (ShardID, *Shard) {
 		m.Shards = make(map[ShardID]*Shard)
 	}
 	m.Shards[id] = s
-	return id, s
+	return id
 }
 
 func (m *Manifest) ReconcileShardStates() bool {
@@ -208,6 +208,8 @@ type Shard struct {
 
 	// Size is the size of the shard - only set once created.
 	Size uint64 `json:",omitempty"`
+	// SHA256 of the shard - only set once created.
+	SHA256 string `json:",omitempty"`
 
 	// State holds the current state of the shard.
 	State State
@@ -266,12 +268,13 @@ func (s *Shard) transition(action action) bool {
 	return ok
 }
 
-func (s *Shard) Created(size uint64) bool {
+func (s *Shard) Created(size uint64, sha256 string) bool {
 	ok := s.transition(created)
 	if ok && s.CreatedAt == nil {
 		now := time.Now()
 		s.CreatedAt = &now
 		s.Size = size
+		s.SHA256 = sha256
 	}
 	return ok
 }

@@ -14,10 +14,12 @@ import (
 	"regexp"
 	"regexp/syntax"
 
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/google/codesearch/cmd/cindex-serve/cache"
 	"github.com/google/codesearch/cmd/cindex-serve/service"
 	oldindex "github.com/google/codesearch/index"
 	"github.com/google/codesearch/index2"
+	"github.com/google/codesearch/repo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/reflection"
@@ -91,7 +93,9 @@ type server struct {
 	cache *cache.Cache
 }
 
-func (s *server) Search(ctx context.Context, req *service.SearchRequest) (*service.SearchResponse, error) {
+var _ service.SearchShardServiceServer = (*server)(nil)
+
+func (s *server) SearchShard(ctx context.Context, req *service.SearchShardRequest) (*service.SearchShardResponse, error) {
 	syn, err := syntax.Parse(req.GetExpression(), syntax.Perl)
 	if err != nil {
 		return nil, err
@@ -117,7 +121,7 @@ func (s *server) Search(ctx context.Context, req *service.SearchRequest) (*servi
 	idx := index.Open(v)
 	post := idx.PostingQuery(q)
 
-	var resp service.SearchResponse
+	var resp service.SearchShardResponse
 	resp.Matches = uint32(post.GetCardinality())
 	var matchRange [][2]int
 	post.Iterate(func(fileid uint32) bool {
@@ -155,7 +159,158 @@ func (s *server) Search(ctx context.Context, req *service.SearchRequest) (*servi
 	return &resp, nil
 }
 
-var _ service.SearchServiceServer = (*server)(nil)
+type indexMetadataServer struct{}
+
+var _ service.IndexMetadataServiceServer = indexMetadataServer{}
+
+func convertShard(id repo.ShardID, s *repo.Shard) *service.Shard {
+	var state service.Shard_State
+	switch s.State {
+	case repo.CreatingState:
+		state = service.Shard_CREATING
+	case repo.UnreferencedState:
+		state = service.Shard_UNREFERENCED
+	case repo.ReferencedState:
+		state = service.Shard_REFERENCED
+	case repo.DeletingState:
+		state = service.Shard_DELETING
+	}
+	return &service.Shard{
+		Id:       id.String(),
+		TreeHash: s.TreeHash,
+		State:    state,
+		Size:     s.Size,
+		Sha256:   s.SHA256,
+	}
+}
+
+func manifestTxn(ctx context.Context, f func(*repo.Manifest) error) error {
+	for {
+		manifest, err := repo.LoadManifest(index.RepoDir())
+		if err != nil {
+			return err
+		}
+		if err := f(manifest); err != nil {
+			return err
+		}
+
+		err = repo.WriteManifest(manifest, index.RepoDir())
+		if err == os.ErrExist {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			continue
+		}
+		return err
+	}
+}
+
+func (indexMetadataServer) AllocateShard(ctx context.Context, req *service.AllocateShardRequest) (*service.AllocateShardResponse, error) {
+	var resp *service.AllocateShardResponse
+	err := manifestTxn(ctx, func(manifest *repo.Manifest) error {
+		id := manifest.CreateShard(plumbing.NewHash(req.GetTreeHash()))
+		resp = &service.AllocateShardResponse{
+			Shard: convertShard(id, manifest.Shards[id]),
+		}
+		return nil
+	})
+	return resp, err
+}
+
+func (indexMetadataServer) CompleteShard(ctx context.Context, req *service.CompleteShardRequest) (*service.CompleteShardResponse, error) {
+	var sID repo.ShardID
+	if err := sID.UnmarshalText([]byte(req.GetShardId())); err != nil {
+		return nil, err
+	}
+
+	return &service.CompleteShardResponse{}, manifestTxn(ctx, func(manifest *repo.Manifest) error {
+		s := manifest.Shards[sID]
+		if s == nil {
+			return status.Errorf(codes.NotFound, "shard %q does not exist", req.GetShardId())
+		}
+		if !s.Created(req.GetSize(), req.GetSha256()) {
+			return status.Errorf(codes.FailedPrecondition, "shard %q in state %s unable to be marked created", req.GetShardId(), s.State)
+		}
+		return nil
+	})
+}
+
+func (indexMetadataServer) GetShard(ctx context.Context, req *service.GetShardRequest) (*service.GetShardResponse, error) {
+	var sID repo.ShardID
+	if err := sID.UnmarshalText([]byte(req.GetShardId())); err != nil {
+		return nil, err
+	}
+
+	manifest, err := repo.LoadManifest(index.RepoDir())
+	if err != nil {
+		return nil, err
+	}
+
+	s := manifest.Shards[sID]
+	if s == nil {
+		return nil, status.Errorf(codes.NotFound, "shard %q does not exist", req.GetShardId())
+	}
+
+	return &service.GetShardResponse{
+		Shard: convertShard(sID, s),
+	}, nil
+}
+
+func (indexMetadataServer) SearchShards(ctx context.Context, req *service.SearchShardsRequest) (*service.SearchShardsResponse, error) {
+	manifest, err := repo.LoadManifest(index.RepoDir())
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &service.SearchShardsResponse{}
+
+	filter := func(id repo.ShardID, s *repo.Shard) {
+		resp.ShardIds = append(resp.ShardIds, id.String())
+	}
+
+	if treeHash := req.GetTreeHash(); treeHash != "" {
+		inner := filter
+		filter = func(id repo.ShardID, s *repo.Shard) {
+			if s.TreeHash == treeHash {
+				inner(id, s)
+			}
+		}
+	}
+
+	for id, s := range manifest.Shards {
+		filter(id, s)
+	}
+	return resp, nil
+}
+
+func (indexMetadataServer) UpdateRepoShard(ctx context.Context, req *service.UpdateRepoShardRequest) (*service.UpdateRepoShardResponse, error) {
+	var sID repo.ShardID
+	if err := sID.UnmarshalText([]byte(req.GetShardId())); err != nil {
+		return nil, err
+	}
+
+	return &service.UpdateRepoShardResponse{}, manifestTxn(ctx, func(m *repo.Manifest) error {
+		if s := m.Shards[sID]; s == nil {
+			return status.Errorf(codes.NotFound, "shard %q does not exist", req.GetShardId())
+		}
+
+		r := m.GetOrCreateRepo(req.GetRepo())
+		if r.DefaultRevision == "" {
+			r.DefaultRevision = req.GetRevision()
+		}
+		repoRev := r.GetOrCreateRevision(plumbing.Revision(req.GetRevision()))
+		repoRev.CommitHash = req.GetCommitHash()
+		repoRev.ShardID = sID
+
+		if !m.ReconcileShardStates() {
+			return status.Errorf(codes.FailedPrecondition, "unable to reconcile %#v", m)
+		}
+
+		return nil
+	})
+}
 
 func main() {
 	flag.Parse()
@@ -167,7 +322,7 @@ func main() {
 
 	g := grpc.NewServer()
 	reflection.Register(g)
-	service.RegisterSearchServiceServer(g, s)
+	service.RegisterSearchShardServiceServer(g, s)
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", *port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)

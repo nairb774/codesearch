@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -39,18 +41,20 @@ func (r *revFlag) Set(v string) error {
 }
 func (r *revFlag) String() string { return r.Revision.String() }
 
-func writeShard(iw *index.IndexWriter, path string) (uint64, error) {
+func writeShard(iw *index.IndexWriter, path string) (uint64, [sha256.Size]byte, error) {
 	b, err := iw.ToBytes()
+	l := uint64(len(b))
+	h := sha256.Sum256(b)
 	if err != nil {
-		return 0, err
+		return l, h, err
 	}
 	tmpFile := path + "~"
 	if err := ioutil.WriteFile(tmpFile, b, 0o600); err != nil {
 		os.Remove(tmpFile)
-		return 0, err
+		return l, h, err
 	}
 
-	return uint64(len(b)), os.Rename(tmpFile, path)
+	return l, h, os.Rename(tmpFile, path)
 }
 
 func indexRepo(c *object.Commit) (*index.IndexWriter, error) {
@@ -118,7 +122,7 @@ func main() {
 
 		done := false
 		if *force {
-			shardID, _ = manifest.CreateShard(c.TreeHash)
+			shardID = manifest.CreateShard(c.TreeHash)
 		} else if manifest.Repos[*repoName].GetRevision(revisionFlag.Revision).GetCommitHash() == *hash {
 			log.Printf("Already indexed %v@%v:%v", *repoName, revisionFlag, hash)
 			return
@@ -131,7 +135,7 @@ func main() {
 				}
 				done = true
 			} else {
-				shardID, _ = manifest.CreateShard(c.TreeHash)
+				shardID = manifest.CreateShard(c.TreeHash)
 			}
 		}
 
@@ -151,7 +155,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	shardSize, err := writeShard(s, path)
+	shardSize, sha256, err := writeShard(s, path)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -161,7 +165,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if shard := manifest.Shards[shardID]; !shard.Created(shardSize) {
+	if shard := manifest.Shards[shardID]; !shard.Created(shardSize, hex.EncodeToString(sha256[:])) {
 		log.Fatalf("shard %v in bad state %#v", shardID, shard)
 	}
 

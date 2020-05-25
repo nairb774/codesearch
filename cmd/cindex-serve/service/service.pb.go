@@ -29,6 +29,69 @@ const (
 // of the legacy proto package is being used.
 const _ = proto.ProtoPackageIsVersion4
 
+type Shard_State int32
+
+const (
+	Shard_UNKNOWN Shard_State = 0
+	// The shard has been allocated, but has not yet been marked as done being
+	// created. The actual contents of the shard may not exist, or may be
+	// incomplete.
+	Shard_CREATING Shard_State = 1
+	// The shard has been completed, and is not being used by any repositories.
+	// Shards in the UNREFERENCED state may be garbage collected.
+	Shard_UNREFERENCED Shard_State = 2
+	// The shard is referenced by one or more repoositories. The shard should
+	// not be deleted.
+	Shard_REFERENCED Shard_State = 3
+	// The shard is going through the process of being removed.
+	Shard_DELETING Shard_State = 4
+)
+
+// Enum value maps for Shard_State.
+var (
+	Shard_State_name = map[int32]string{
+		0: "UNKNOWN",
+		1: "CREATING",
+		2: "UNREFERENCED",
+		3: "REFERENCED",
+		4: "DELETING",
+	}
+	Shard_State_value = map[string]int32{
+		"UNKNOWN":      0,
+		"CREATING":     1,
+		"UNREFERENCED": 2,
+		"REFERENCED":   3,
+		"DELETING":     4,
+	}
+)
+
+func (x Shard_State) Enum() *Shard_State {
+	p := new(Shard_State)
+	*p = x
+	return p
+}
+
+func (x Shard_State) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Shard_State) Descriptor() protoreflect.EnumDescriptor {
+	return file_service_proto_enumTypes[0].Descriptor()
+}
+
+func (Shard_State) Type() protoreflect.EnumType {
+	return &file_service_proto_enumTypes[0]
+}
+
+func (x Shard_State) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Shard_State.Descriptor instead.
+func (Shard_State) EnumDescriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{4, 0}
+}
+
 type Doc struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -97,9 +160,12 @@ type Snippet struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Lines     string   `protobuf:"bytes,1,opt,name=lines,proto3" json:"lines,omitempty"`
-	FirstLine uint32   `protobuf:"varint,2,opt,name=first_line,json=firstLine,proto3" json:"first_line,omitempty"`
-	Matches   []uint32 `protobuf:"varint,3,rep,packed,name=matches,proto3" json:"matches,omitempty"`
+	// One or more lines, separated by '\n' containing matching results.
+	Lines string `protobuf:"bytes,1,opt,name=lines,proto3" json:"lines,omitempty"`
+	// Line number of the first line in the snippet.
+	FirstLine uint32 `protobuf:"varint,2,opt,name=first_line,json=firstLine,proto3" json:"first_line,omitempty"`
+	// Pairs of byte offsets indicating matches.
+	Matches []uint32 `protobuf:"varint,3,rep,packed,name=matches,proto3" json:"matches,omitempty"`
 }
 
 func (x *Snippet) Reset() {
@@ -155,7 +221,7 @@ func (x *Snippet) GetMatches() []uint32 {
 	return nil
 }
 
-type SearchRequest struct {
+type SearchShardRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -165,8 +231,8 @@ type SearchRequest struct {
 	Expression string `protobuf:"bytes,2,opt,name=expression,proto3" json:"expression,omitempty"`
 }
 
-func (x *SearchRequest) Reset() {
-	*x = SearchRequest{}
+func (x *SearchShardRequest) Reset() {
+	*x = SearchShardRequest{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_service_proto_msgTypes[2]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -174,13 +240,13 @@ func (x *SearchRequest) Reset() {
 	}
 }
 
-func (x *SearchRequest) String() string {
+func (x *SearchShardRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SearchRequest) ProtoMessage() {}
+func (*SearchShardRequest) ProtoMessage() {}
 
-func (x *SearchRequest) ProtoReflect() protoreflect.Message {
+func (x *SearchShardRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_service_proto_msgTypes[2]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -192,26 +258,26 @@ func (x *SearchRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SearchRequest.ProtoReflect.Descriptor instead.
-func (*SearchRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use SearchShardRequest.ProtoReflect.Descriptor instead.
+func (*SearchShardRequest) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *SearchRequest) GetShardId() string {
+func (x *SearchShardRequest) GetShardId() string {
 	if x != nil {
 		return x.ShardId
 	}
 	return ""
 }
 
-func (x *SearchRequest) GetExpression() string {
+func (x *SearchShardRequest) GetExpression() string {
 	if x != nil {
 		return x.Expression
 	}
 	return ""
 }
 
-type SearchResponse struct {
+type SearchShardResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
@@ -225,8 +291,8 @@ type SearchResponse struct {
 	DocsInspected uint32 `protobuf:"varint,3,opt,name=docs_inspected,json=docsInspected,proto3" json:"docs_inspected,omitempty"`
 }
 
-func (x *SearchResponse) Reset() {
-	*x = SearchResponse{}
+func (x *SearchShardResponse) Reset() {
+	*x = SearchShardResponse{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_service_proto_msgTypes[3]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -234,13 +300,13 @@ func (x *SearchResponse) Reset() {
 	}
 }
 
-func (x *SearchResponse) String() string {
+func (x *SearchShardResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*SearchResponse) ProtoMessage() {}
+func (*SearchShardResponse) ProtoMessage() {}
 
-func (x *SearchResponse) ProtoReflect() protoreflect.Message {
+func (x *SearchShardResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_service_proto_msgTypes[3]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -252,30 +318,616 @@ func (x *SearchResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use SearchResponse.ProtoReflect.Descriptor instead.
-func (*SearchResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use SearchShardResponse.ProtoReflect.Descriptor instead.
+func (*SearchShardResponse) Descriptor() ([]byte, []int) {
 	return file_service_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *SearchResponse) GetDocs() []*Doc {
+func (x *SearchShardResponse) GetDocs() []*Doc {
 	if x != nil {
 		return x.Docs
 	}
 	return nil
 }
 
-func (x *SearchResponse) GetMatches() uint32 {
+func (x *SearchShardResponse) GetMatches() uint32 {
 	if x != nil {
 		return x.Matches
 	}
 	return 0
 }
 
-func (x *SearchResponse) GetDocsInspected() uint32 {
+func (x *SearchShardResponse) GetDocsInspected() uint32 {
 	if x != nil {
 		return x.DocsInspected
 	}
 	return 0
+}
+
+// Shard represents an index shard.
+type Shard struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id       string      `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	TreeHash string      `protobuf:"bytes,2,opt,name=tree_hash,json=treeHash,proto3" json:"tree_hash,omitempty"`
+	State    Shard_State `protobuf:"varint,3,opt,name=state,proto3,enum=codesearch.Shard_State" json:"state,omitempty"`
+	// The size is only valid when the shard is not in the CREATING state.
+	Size uint64 `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
+	// The hash is only valid when the shard is not in the CREATING state.
+	Sha256 string `protobuf:"bytes,5,opt,name=sha256,proto3" json:"sha256,omitempty"`
+}
+
+func (x *Shard) Reset() {
+	*x = Shard{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *Shard) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Shard) ProtoMessage() {}
+
+func (x *Shard) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Shard.ProtoReflect.Descriptor instead.
+func (*Shard) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *Shard) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Shard) GetTreeHash() string {
+	if x != nil {
+		return x.TreeHash
+	}
+	return ""
+}
+
+func (x *Shard) GetState() Shard_State {
+	if x != nil {
+		return x.State
+	}
+	return Shard_UNKNOWN
+}
+
+func (x *Shard) GetSize() uint64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *Shard) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
+type AllocateShardRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// The tree hash of the index being created. There can be multiple shards
+	// with the same tree_hash.
+	TreeHash string `protobuf:"bytes,1,opt,name=tree_hash,json=treeHash,proto3" json:"tree_hash,omitempty"`
+}
+
+func (x *AllocateShardRequest) Reset() {
+	*x = AllocateShardRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[5]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *AllocateShardRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AllocateShardRequest) ProtoMessage() {}
+
+func (x *AllocateShardRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[5]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AllocateShardRequest.ProtoReflect.Descriptor instead.
+func (*AllocateShardRequest) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *AllocateShardRequest) GetTreeHash() string {
+	if x != nil {
+		return x.TreeHash
+	}
+	return ""
+}
+
+type AllocateShardResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// The current state of the newly allocated shard.
+	Shard *Shard `protobuf:"bytes,1,opt,name=shard,proto3" json:"shard,omitempty"`
+}
+
+func (x *AllocateShardResponse) Reset() {
+	*x = AllocateShardResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[6]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *AllocateShardResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AllocateShardResponse) ProtoMessage() {}
+
+func (x *AllocateShardResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[6]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AllocateShardResponse.ProtoReflect.Descriptor instead.
+func (*AllocateShardResponse) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *AllocateShardResponse) GetShard() *Shard {
+	if x != nil {
+		return x.Shard
+	}
+	return nil
+}
+
+type CompleteShardRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// The shard_id to mark completed.
+	ShardId string `protobuf:"bytes,1,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
+	// The final size of the generated shard.
+	Size uint64 `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+	// The sha256 sum of the shard contents.
+	Sha256 string `protobuf:"bytes,3,opt,name=sha256,proto3" json:"sha256,omitempty"`
+}
+
+func (x *CompleteShardRequest) Reset() {
+	*x = CompleteShardRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[7]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *CompleteShardRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteShardRequest) ProtoMessage() {}
+
+func (x *CompleteShardRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[7]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteShardRequest.ProtoReflect.Descriptor instead.
+func (*CompleteShardRequest) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *CompleteShardRequest) GetShardId() string {
+	if x != nil {
+		return x.ShardId
+	}
+	return ""
+}
+
+func (x *CompleteShardRequest) GetSize() uint64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *CompleteShardRequest) GetSha256() string {
+	if x != nil {
+		return x.Sha256
+	}
+	return ""
+}
+
+type CompleteShardResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *CompleteShardResponse) Reset() {
+	*x = CompleteShardResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[8]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *CompleteShardResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteShardResponse) ProtoMessage() {}
+
+func (x *CompleteShardResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[8]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteShardResponse.ProtoReflect.Descriptor instead.
+func (*CompleteShardResponse) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{8}
+}
+
+type GetShardRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ShardId string `protobuf:"bytes,1,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
+}
+
+func (x *GetShardRequest) Reset() {
+	*x = GetShardRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[9]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *GetShardRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetShardRequest) ProtoMessage() {}
+
+func (x *GetShardRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[9]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetShardRequest.ProtoReflect.Descriptor instead.
+func (*GetShardRequest) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *GetShardRequest) GetShardId() string {
+	if x != nil {
+		return x.ShardId
+	}
+	return ""
+}
+
+type GetShardResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Shard *Shard `protobuf:"bytes,1,opt,name=shard,proto3" json:"shard,omitempty"`
+}
+
+func (x *GetShardResponse) Reset() {
+	*x = GetShardResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[10]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *GetShardResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetShardResponse) ProtoMessage() {}
+
+func (x *GetShardResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[10]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetShardResponse.ProtoReflect.Descriptor instead.
+func (*GetShardResponse) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetShardResponse) GetShard() *Shard {
+	if x != nil {
+		return x.Shard
+	}
+	return nil
+}
+
+type SearchShardsRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// If set only shards matching this tree hash will be returned.
+	TreeHash string `protobuf:"bytes,1,opt,name=tree_hash,json=treeHash,proto3" json:"tree_hash,omitempty"`
+}
+
+func (x *SearchShardsRequest) Reset() {
+	*x = SearchShardsRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[11]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *SearchShardsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchShardsRequest) ProtoMessage() {}
+
+func (x *SearchShardsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[11]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchShardsRequest.ProtoReflect.Descriptor instead.
+func (*SearchShardsRequest) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *SearchShardsRequest) GetTreeHash() string {
+	if x != nil {
+		return x.TreeHash
+	}
+	return ""
+}
+
+type SearchShardsResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// List of matching shard_ids.
+	ShardIds []string `protobuf:"bytes,1,rep,name=shard_ids,json=shardIds,proto3" json:"shard_ids,omitempty"`
+}
+
+func (x *SearchShardsResponse) Reset() {
+	*x = SearchShardsResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[12]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *SearchShardsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchShardsResponse) ProtoMessage() {}
+
+func (x *SearchShardsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[12]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchShardsResponse.ProtoReflect.Descriptor instead.
+func (*SearchShardsResponse) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *SearchShardsResponse) GetShardIds() []string {
+	if x != nil {
+		return x.ShardIds
+	}
+	return nil
+}
+
+type UpdateRepoShardRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	// The name of the repository to update.
+	Repo string `protobuf:"bytes,1,opt,name=repo,proto3" json:"repo,omitempty"`
+	// The name of the revision (tag, branch, ref, ...).
+	Revision string `protobuf:"bytes,2,opt,name=revision,proto3" json:"revision,omitempty"`
+	// The commit hash of the revision (for detecting the need to index).
+	CommitHash string `protobuf:"bytes,3,opt,name=commit_hash,json=commitHash,proto3" json:"commit_hash,omitempty"`
+	// The shard_id to map to. Must be in the UNREFERENCED or REFERENCED state.
+	ShardId string `protobuf:"bytes,4,opt,name=shard_id,json=shardId,proto3" json:"shard_id,omitempty"`
+}
+
+func (x *UpdateRepoShardRequest) Reset() {
+	*x = UpdateRepoShardRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[13]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *UpdateRepoShardRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateRepoShardRequest) ProtoMessage() {}
+
+func (x *UpdateRepoShardRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[13]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateRepoShardRequest.ProtoReflect.Descriptor instead.
+func (*UpdateRepoShardRequest) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *UpdateRepoShardRequest) GetRepo() string {
+	if x != nil {
+		return x.Repo
+	}
+	return ""
+}
+
+func (x *UpdateRepoShardRequest) GetRevision() string {
+	if x != nil {
+		return x.Revision
+	}
+	return ""
+}
+
+func (x *UpdateRepoShardRequest) GetCommitHash() string {
+	if x != nil {
+		return x.CommitHash
+	}
+	return ""
+}
+
+func (x *UpdateRepoShardRequest) GetShardId() string {
+	if x != nil {
+		return x.ShardId
+	}
+	return ""
+}
+
+type UpdateRepoShardResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+}
+
+func (x *UpdateRepoShardResponse) Reset() {
+	*x = UpdateRepoShardResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_service_proto_msgTypes[14]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *UpdateRepoShardResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateRepoShardResponse) ProtoMessage() {}
+
+func (x *UpdateRepoShardResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_service_proto_msgTypes[14]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateRepoShardResponse.ProtoReflect.Descriptor instead.
+func (*UpdateRepoShardResponse) Descriptor() ([]byte, []int) {
+	return file_service_proto_rawDescGZIP(), []int{14}
 }
 
 var File_service_proto protoreflect.FileDescriptor
@@ -294,28 +946,111 @@ var file_service_proto_rawDesc = []byte{
 	0x74, 0x5f, 0x6c, 0x69, 0x6e, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x09, 0x66, 0x69,
 	0x72, 0x73, 0x74, 0x4c, 0x69, 0x6e, 0x65, 0x12, 0x18, 0x0a, 0x07, 0x6d, 0x61, 0x74, 0x63, 0x68,
 	0x65, 0x73, 0x18, 0x03, 0x20, 0x03, 0x28, 0x0d, 0x52, 0x07, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x65,
-	0x73, 0x22, 0x4a, 0x0a, 0x0d, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x52, 0x65, 0x71, 0x75, 0x65,
-	0x73, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x73, 0x68, 0x61, 0x72, 0x64, 0x5f, 0x69, 0x64, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x73, 0x68, 0x61, 0x72, 0x64, 0x49, 0x64, 0x12, 0x1e, 0x0a,
-	0x0a, 0x65, 0x78, 0x70, 0x72, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28,
-	0x09, 0x52, 0x0a, 0x65, 0x78, 0x70, 0x72, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x22, 0x76, 0x0a,
-	0x0e, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12,
-	0x23, 0x0a, 0x04, 0x64, 0x6f, 0x63, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x0f, 0x2e,
-	0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2e, 0x44, 0x6f, 0x63, 0x52, 0x04,
-	0x64, 0x6f, 0x63, 0x73, 0x12, 0x18, 0x0a, 0x07, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x65, 0x73, 0x18,
-	0x02, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x07, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x65, 0x73, 0x12, 0x25,
-	0x0a, 0x0e, 0x64, 0x6f, 0x63, 0x73, 0x5f, 0x69, 0x6e, 0x73, 0x70, 0x65, 0x63, 0x74, 0x65, 0x64,
-	0x18, 0x03, 0x20, 0x01, 0x28, 0x0d, 0x52, 0x0d, 0x64, 0x6f, 0x63, 0x73, 0x49, 0x6e, 0x73, 0x70,
-	0x65, 0x63, 0x74, 0x65, 0x64, 0x32, 0x52, 0x0a, 0x0d, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x53,
-	0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x41, 0x0a, 0x06, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68,
-	0x12, 0x19, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2e, 0x53, 0x65,
-	0x61, 0x72, 0x63, 0x68, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1a, 0x2e, 0x63, 0x6f,
-	0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2e, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x52,
-	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x39, 0x5a, 0x37, 0x67, 0x69, 0x74,
-	0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6e, 0x61, 0x69, 0x72, 0x62, 0x37, 0x37, 0x34,
-	0x2f, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2f, 0x63, 0x6d, 0x64, 0x2f,
-	0x63, 0x69, 0x6e, 0x64, 0x65, 0x78, 0x2d, 0x73, 0x65, 0x72, 0x76, 0x65, 0x2f, 0x73, 0x65, 0x72,
-	0x76, 0x69, 0x63, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x73, 0x22, 0x4f, 0x0a, 0x12, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x53, 0x68, 0x61, 0x72, 0x64,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x73, 0x68, 0x61, 0x72, 0x64,
+	0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x73, 0x68, 0x61, 0x72, 0x64,
+	0x49, 0x64, 0x12, 0x1e, 0x0a, 0x0a, 0x65, 0x78, 0x70, 0x72, 0x65, 0x73, 0x73, 0x69, 0x6f, 0x6e,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0a, 0x65, 0x78, 0x70, 0x72, 0x65, 0x73, 0x73, 0x69,
+	0x6f, 0x6e, 0x22, 0x7b, 0x0a, 0x13, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x53, 0x68, 0x61, 0x72,
+	0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x23, 0x0a, 0x04, 0x64, 0x6f, 0x63,
+	0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x0f, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65,
+	0x61, 0x72, 0x63, 0x68, 0x2e, 0x44, 0x6f, 0x63, 0x52, 0x04, 0x64, 0x6f, 0x63, 0x73, 0x12, 0x18,
+	0x0a, 0x07, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x65, 0x73, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0d, 0x52,
+	0x07, 0x6d, 0x61, 0x74, 0x63, 0x68, 0x65, 0x73, 0x12, 0x25, 0x0a, 0x0e, 0x64, 0x6f, 0x63, 0x73,
+	0x5f, 0x69, 0x6e, 0x73, 0x70, 0x65, 0x63, 0x74, 0x65, 0x64, 0x18, 0x03, 0x20, 0x01, 0x28, 0x0d,
+	0x52, 0x0d, 0x64, 0x6f, 0x63, 0x73, 0x49, 0x6e, 0x73, 0x70, 0x65, 0x63, 0x74, 0x65, 0x64, 0x22,
+	0xe3, 0x01, 0x0a, 0x05, 0x53, 0x68, 0x61, 0x72, 0x64, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x12, 0x1b, 0x0a, 0x09, 0x74, 0x72, 0x65,
+	0x65, 0x5f, 0x68, 0x61, 0x73, 0x68, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x74, 0x72,
+	0x65, 0x65, 0x48, 0x61, 0x73, 0x68, 0x12, 0x2d, 0x0a, 0x05, 0x73, 0x74, 0x61, 0x74, 0x65, 0x18,
+	0x03, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x17, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72,
+	0x63, 0x68, 0x2e, 0x53, 0x68, 0x61, 0x72, 0x64, 0x2e, 0x53, 0x74, 0x61, 0x74, 0x65, 0x52, 0x05,
+	0x73, 0x74, 0x61, 0x74, 0x65, 0x12, 0x12, 0x0a, 0x04, 0x73, 0x69, 0x7a, 0x65, 0x18, 0x04, 0x20,
+	0x01, 0x28, 0x04, 0x52, 0x04, 0x73, 0x69, 0x7a, 0x65, 0x12, 0x16, 0x0a, 0x06, 0x73, 0x68, 0x61,
+	0x32, 0x35, 0x36, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x73, 0x68, 0x61, 0x32, 0x35,
+	0x36, 0x22, 0x52, 0x0a, 0x05, 0x53, 0x74, 0x61, 0x74, 0x65, 0x12, 0x0b, 0x0a, 0x07, 0x55, 0x4e,
+	0x4b, 0x4e, 0x4f, 0x57, 0x4e, 0x10, 0x00, 0x12, 0x0c, 0x0a, 0x08, 0x43, 0x52, 0x45, 0x41, 0x54,
+	0x49, 0x4e, 0x47, 0x10, 0x01, 0x12, 0x10, 0x0a, 0x0c, 0x55, 0x4e, 0x52, 0x45, 0x46, 0x45, 0x52,
+	0x45, 0x4e, 0x43, 0x45, 0x44, 0x10, 0x02, 0x12, 0x0e, 0x0a, 0x0a, 0x52, 0x45, 0x46, 0x45, 0x52,
+	0x45, 0x4e, 0x43, 0x45, 0x44, 0x10, 0x03, 0x12, 0x0c, 0x0a, 0x08, 0x44, 0x45, 0x4c, 0x45, 0x54,
+	0x49, 0x4e, 0x47, 0x10, 0x04, 0x22, 0x33, 0x0a, 0x14, 0x41, 0x6c, 0x6c, 0x6f, 0x63, 0x61, 0x74,
+	0x65, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x1b, 0x0a,
+	0x09, 0x74, 0x72, 0x65, 0x65, 0x5f, 0x68, 0x61, 0x73, 0x68, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09,
+	0x52, 0x08, 0x74, 0x72, 0x65, 0x65, 0x48, 0x61, 0x73, 0x68, 0x22, 0x40, 0x0a, 0x15, 0x41, 0x6c,
+	0x6c, 0x6f, 0x63, 0x61, 0x74, 0x65, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f,
+	0x6e, 0x73, 0x65, 0x12, 0x27, 0x0a, 0x05, 0x73, 0x68, 0x61, 0x72, 0x64, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x0b, 0x32, 0x11, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2e,
+	0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x05, 0x73, 0x68, 0x61, 0x72, 0x64, 0x22, 0x5d, 0x0a, 0x14,
+	0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x73, 0x68, 0x61, 0x72, 0x64, 0x5f, 0x69, 0x64,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x73, 0x68, 0x61, 0x72, 0x64, 0x49, 0x64, 0x12,
+	0x12, 0x0a, 0x04, 0x73, 0x69, 0x7a, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x04, 0x52, 0x04, 0x73,
+	0x69, 0x7a, 0x65, 0x12, 0x16, 0x0a, 0x06, 0x73, 0x68, 0x61, 0x32, 0x35, 0x36, 0x18, 0x03, 0x20,
+	0x01, 0x28, 0x09, 0x52, 0x06, 0x73, 0x68, 0x61, 0x32, 0x35, 0x36, 0x22, 0x17, 0x0a, 0x15, 0x43,
+	0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70,
+	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x2c, 0x0a, 0x0f, 0x47, 0x65, 0x74, 0x53, 0x68, 0x61, 0x72, 0x64,
+	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x19, 0x0a, 0x08, 0x73, 0x68, 0x61, 0x72, 0x64,
+	0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x73, 0x68, 0x61, 0x72, 0x64,
+	0x49, 0x64, 0x22, 0x3b, 0x0a, 0x10, 0x47, 0x65, 0x74, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x27, 0x0a, 0x05, 0x73, 0x68, 0x61, 0x72, 0x64, 0x18,
+	0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x11, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72,
+	0x63, 0x68, 0x2e, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x05, 0x73, 0x68, 0x61, 0x72, 0x64, 0x22,
+	0x32, 0x0a, 0x13, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x53, 0x68, 0x61, 0x72, 0x64, 0x73, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x1b, 0x0a, 0x09, 0x74, 0x72, 0x65, 0x65, 0x5f, 0x68,
+	0x61, 0x73, 0x68, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x74, 0x72, 0x65, 0x65, 0x48,
+	0x61, 0x73, 0x68, 0x22, 0x33, 0x0a, 0x14, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x53, 0x68, 0x61,
+	0x72, 0x64, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x1b, 0x0a, 0x09, 0x73,
+	0x68, 0x61, 0x72, 0x64, 0x5f, 0x69, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x09, 0x52, 0x08,
+	0x73, 0x68, 0x61, 0x72, 0x64, 0x49, 0x64, 0x73, 0x22, 0x84, 0x01, 0x0a, 0x16, 0x55, 0x70, 0x64,
+	0x61, 0x74, 0x65, 0x52, 0x65, 0x70, 0x6f, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x72, 0x65, 0x70, 0x6f, 0x18, 0x01, 0x20, 0x01, 0x28,
+	0x09, 0x52, 0x04, 0x72, 0x65, 0x70, 0x6f, 0x12, 0x1a, 0x0a, 0x08, 0x72, 0x65, 0x76, 0x69, 0x73,
+	0x69, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x08, 0x72, 0x65, 0x76, 0x69, 0x73,
+	0x69, 0x6f, 0x6e, 0x12, 0x1f, 0x0a, 0x0b, 0x63, 0x6f, 0x6d, 0x6d, 0x69, 0x74, 0x5f, 0x68, 0x61,
+	0x73, 0x68, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0a, 0x63, 0x6f, 0x6d, 0x6d, 0x69, 0x74,
+	0x48, 0x61, 0x73, 0x68, 0x12, 0x19, 0x0a, 0x08, 0x73, 0x68, 0x61, 0x72, 0x64, 0x5f, 0x69, 0x64,
+	0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x73, 0x68, 0x61, 0x72, 0x64, 0x49, 0x64, 0x22,
+	0x19, 0x0a, 0x17, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x52, 0x65, 0x70, 0x6f, 0x53, 0x68, 0x61,
+	0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0x66, 0x0a, 0x12, 0x53, 0x65,
+	0x61, 0x72, 0x63, 0x68, 0x53, 0x68, 0x61, 0x72, 0x64, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65,
+	0x12, 0x50, 0x0a, 0x0b, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x53, 0x68, 0x61, 0x72, 0x64, 0x12,
+	0x1e, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2e, 0x53, 0x65, 0x61,
+	0x72, 0x63, 0x68, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
+	0x1f, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2e, 0x53, 0x65, 0x61,
+	0x72, 0x63, 0x68, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x22, 0x00, 0x32, 0xc2, 0x03, 0x0a, 0x14, 0x49, 0x6e, 0x64, 0x65, 0x78, 0x4d, 0x65, 0x74, 0x61,
+	0x64, 0x61, 0x74, 0x61, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x56, 0x0a, 0x0d, 0x41,
+	0x6c, 0x6c, 0x6f, 0x63, 0x61, 0x74, 0x65, 0x53, 0x68, 0x61, 0x72, 0x64, 0x12, 0x20, 0x2e, 0x63,
+	0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2e, 0x41, 0x6c, 0x6c, 0x6f, 0x63, 0x61,
+	0x74, 0x65, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x21,
+	0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2e, 0x41, 0x6c, 0x6c, 0x6f,
+	0x63, 0x61, 0x74, 0x65, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x22, 0x00, 0x12, 0x56, 0x0a, 0x0d, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x53,
+	0x68, 0x61, 0x72, 0x64, 0x12, 0x20, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63,
+	0x68, 0x2e, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x21, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61,
+	0x72, 0x63, 0x68, 0x2e, 0x43, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x53, 0x68, 0x61, 0x72,
+	0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x47, 0x0a, 0x08, 0x47,
+	0x65, 0x74, 0x53, 0x68, 0x61, 0x72, 0x64, 0x12, 0x1b, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65,
+	0x61, 0x72, 0x63, 0x68, 0x2e, 0x47, 0x65, 0x74, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x1a, 0x1c, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63,
+	0x68, 0x2e, 0x47, 0x65, 0x74, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+	0x73, 0x65, 0x22, 0x00, 0x12, 0x53, 0x0a, 0x0c, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x53, 0x68,
+	0x61, 0x72, 0x64, 0x73, 0x12, 0x1f, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63,
+	0x68, 0x2e, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x53, 0x68, 0x61, 0x72, 0x64, 0x73, 0x52, 0x65,
+	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x20, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72,
+	0x63, 0x68, 0x2e, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x53, 0x68, 0x61, 0x72, 0x64, 0x73, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x5c, 0x0a, 0x0f, 0x55, 0x70, 0x64,
+	0x61, 0x74, 0x65, 0x52, 0x65, 0x70, 0x6f, 0x53, 0x68, 0x61, 0x72, 0x64, 0x12, 0x22, 0x2e, 0x63,
+	0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65,
+	0x52, 0x65, 0x70, 0x6f, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
+	0x1a, 0x23, 0x2e, 0x63, 0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2e, 0x55, 0x70,
+	0x64, 0x61, 0x74, 0x65, 0x52, 0x65, 0x70, 0x6f, 0x53, 0x68, 0x61, 0x72, 0x64, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x39, 0x5a, 0x37, 0x67, 0x69, 0x74, 0x68, 0x75,
+	0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x6e, 0x61, 0x69, 0x72, 0x62, 0x37, 0x37, 0x34, 0x2f, 0x63,
+	0x6f, 0x64, 0x65, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68, 0x2f, 0x63, 0x6d, 0x64, 0x2f, 0x63, 0x69,
+	0x6e, 0x64, 0x65, 0x78, 0x2d, 0x73, 0x65, 0x72, 0x76, 0x65, 0x2f, 0x73, 0x65, 0x72, 0x76, 0x69,
+	0x63, 0x65, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -330,23 +1065,49 @@ func file_service_proto_rawDescGZIP() []byte {
 	return file_service_proto_rawDescData
 }
 
-var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_service_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_service_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_service_proto_goTypes = []interface{}{
-	(*Doc)(nil),            // 0: codesearch.Doc
-	(*Snippet)(nil),        // 1: codesearch.Snippet
-	(*SearchRequest)(nil),  // 2: codesearch.SearchRequest
-	(*SearchResponse)(nil), // 3: codesearch.SearchResponse
+	(Shard_State)(0),                // 0: codesearch.Shard.State
+	(*Doc)(nil),                     // 1: codesearch.Doc
+	(*Snippet)(nil),                 // 2: codesearch.Snippet
+	(*SearchShardRequest)(nil),      // 3: codesearch.SearchShardRequest
+	(*SearchShardResponse)(nil),     // 4: codesearch.SearchShardResponse
+	(*Shard)(nil),                   // 5: codesearch.Shard
+	(*AllocateShardRequest)(nil),    // 6: codesearch.AllocateShardRequest
+	(*AllocateShardResponse)(nil),   // 7: codesearch.AllocateShardResponse
+	(*CompleteShardRequest)(nil),    // 8: codesearch.CompleteShardRequest
+	(*CompleteShardResponse)(nil),   // 9: codesearch.CompleteShardResponse
+	(*GetShardRequest)(nil),         // 10: codesearch.GetShardRequest
+	(*GetShardResponse)(nil),        // 11: codesearch.GetShardResponse
+	(*SearchShardsRequest)(nil),     // 12: codesearch.SearchShardsRequest
+	(*SearchShardsResponse)(nil),    // 13: codesearch.SearchShardsResponse
+	(*UpdateRepoShardRequest)(nil),  // 14: codesearch.UpdateRepoShardRequest
+	(*UpdateRepoShardResponse)(nil), // 15: codesearch.UpdateRepoShardResponse
 }
 var file_service_proto_depIdxs = []int32{
-	1, // 0: codesearch.Doc.snippets:type_name -> codesearch.Snippet
-	0, // 1: codesearch.SearchResponse.docs:type_name -> codesearch.Doc
-	2, // 2: codesearch.SearchService.Search:input_type -> codesearch.SearchRequest
-	3, // 3: codesearch.SearchService.Search:output_type -> codesearch.SearchResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	2,  // 0: codesearch.Doc.snippets:type_name -> codesearch.Snippet
+	1,  // 1: codesearch.SearchShardResponse.docs:type_name -> codesearch.Doc
+	0,  // 2: codesearch.Shard.state:type_name -> codesearch.Shard.State
+	5,  // 3: codesearch.AllocateShardResponse.shard:type_name -> codesearch.Shard
+	5,  // 4: codesearch.GetShardResponse.shard:type_name -> codesearch.Shard
+	3,  // 5: codesearch.SearchShardService.SearchShard:input_type -> codesearch.SearchShardRequest
+	6,  // 6: codesearch.IndexMetadataService.AllocateShard:input_type -> codesearch.AllocateShardRequest
+	8,  // 7: codesearch.IndexMetadataService.CompleteShard:input_type -> codesearch.CompleteShardRequest
+	10, // 8: codesearch.IndexMetadataService.GetShard:input_type -> codesearch.GetShardRequest
+	12, // 9: codesearch.IndexMetadataService.SearchShards:input_type -> codesearch.SearchShardsRequest
+	14, // 10: codesearch.IndexMetadataService.UpdateRepoShard:input_type -> codesearch.UpdateRepoShardRequest
+	4,  // 11: codesearch.SearchShardService.SearchShard:output_type -> codesearch.SearchShardResponse
+	7,  // 12: codesearch.IndexMetadataService.AllocateShard:output_type -> codesearch.AllocateShardResponse
+	9,  // 13: codesearch.IndexMetadataService.CompleteShard:output_type -> codesearch.CompleteShardResponse
+	11, // 14: codesearch.IndexMetadataService.GetShard:output_type -> codesearch.GetShardResponse
+	13, // 15: codesearch.IndexMetadataService.SearchShards:output_type -> codesearch.SearchShardsResponse
+	15, // 16: codesearch.IndexMetadataService.UpdateRepoShard:output_type -> codesearch.UpdateRepoShardResponse
+	11, // [11:17] is the sub-list for method output_type
+	5,  // [5:11] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_service_proto_init() }
@@ -380,7 +1141,7 @@ func file_service_proto_init() {
 			}
 		}
 		file_service_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*SearchRequest); i {
+			switch v := v.(*SearchShardRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -392,7 +1153,139 @@ func file_service_proto_init() {
 			}
 		}
 		file_service_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*SearchResponse); i {
+			switch v := v.(*SearchShardResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*Shard); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*AllocateShardRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*AllocateShardResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*CompleteShardRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[8].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*CompleteShardResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[9].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetShardRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[10].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetShardResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[11].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*SearchShardsRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[12].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*SearchShardsResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[13].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*UpdateRepoShardRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_service_proto_msgTypes[14].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*UpdateRepoShardResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -409,13 +1302,14 @@ func file_service_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_service_proto_rawDesc,
-			NumEnums:      0,
-			NumMessages:   4,
+			NumEnums:      1,
+			NumMessages:   15,
 			NumExtensions: 0,
-			NumServices:   1,
+			NumServices:   2,
 		},
 		GoTypes:           file_service_proto_goTypes,
 		DependencyIndexes: file_service_proto_depIdxs,
+		EnumInfos:         file_service_proto_enumTypes,
 		MessageInfos:      file_service_proto_msgTypes,
 	}.Build()
 	File_service_proto = out.File
@@ -432,72 +1326,288 @@ var _ grpc.ClientConnInterface
 // is compatible with the grpc package it is being compiled against.
 const _ = grpc.SupportPackageIsVersion6
 
-// SearchServiceClient is the client API for SearchService service.
+// SearchShardServiceClient is the client API for SearchShardService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
-type SearchServiceClient interface {
-	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
+type SearchShardServiceClient interface {
+	SearchShard(ctx context.Context, in *SearchShardRequest, opts ...grpc.CallOption) (*SearchShardResponse, error)
 }
 
-type searchServiceClient struct {
+type searchShardServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewSearchServiceClient(cc grpc.ClientConnInterface) SearchServiceClient {
-	return &searchServiceClient{cc}
+func NewSearchShardServiceClient(cc grpc.ClientConnInterface) SearchShardServiceClient {
+	return &searchShardServiceClient{cc}
 }
 
-func (c *searchServiceClient) Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error) {
-	out := new(SearchResponse)
-	err := c.cc.Invoke(ctx, "/codesearch.SearchService/Search", in, out, opts...)
+func (c *searchShardServiceClient) SearchShard(ctx context.Context, in *SearchShardRequest, opts ...grpc.CallOption) (*SearchShardResponse, error) {
+	out := new(SearchShardResponse)
+	err := c.cc.Invoke(ctx, "/codesearch.SearchShardService/SearchShard", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// SearchServiceServer is the server API for SearchService service.
-type SearchServiceServer interface {
-	Search(context.Context, *SearchRequest) (*SearchResponse, error)
+// SearchShardServiceServer is the server API for SearchShardService service.
+type SearchShardServiceServer interface {
+	SearchShard(context.Context, *SearchShardRequest) (*SearchShardResponse, error)
 }
 
-// UnimplementedSearchServiceServer can be embedded to have forward compatible implementations.
-type UnimplementedSearchServiceServer struct {
+// UnimplementedSearchShardServiceServer can be embedded to have forward compatible implementations.
+type UnimplementedSearchShardServiceServer struct {
 }
 
-func (*UnimplementedSearchServiceServer) Search(context.Context, *SearchRequest) (*SearchResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Search not implemented")
+func (*UnimplementedSearchShardServiceServer) SearchShard(context.Context, *SearchShardRequest) (*SearchShardResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SearchShard not implemented")
 }
 
-func RegisterSearchServiceServer(s *grpc.Server, srv SearchServiceServer) {
-	s.RegisterService(&_SearchService_serviceDesc, srv)
+func RegisterSearchShardServiceServer(s *grpc.Server, srv SearchShardServiceServer) {
+	s.RegisterService(&_SearchShardService_serviceDesc, srv)
 }
 
-func _SearchService_Search_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SearchRequest)
+func _SearchShardService_SearchShard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchShardRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SearchServiceServer).Search(ctx, in)
+		return srv.(SearchShardServiceServer).SearchShard(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/codesearch.SearchService/Search",
+		FullMethod: "/codesearch.SearchShardService/SearchShard",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SearchServiceServer).Search(ctx, req.(*SearchRequest))
+		return srv.(SearchShardServiceServer).SearchShard(ctx, req.(*SearchShardRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-var _SearchService_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "codesearch.SearchService",
-	HandlerType: (*SearchServiceServer)(nil),
+var _SearchShardService_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "codesearch.SearchShardService",
+	HandlerType: (*SearchShardServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Search",
-			Handler:    _SearchService_Search_Handler,
+			MethodName: "SearchShard",
+			Handler:    _SearchShardService_SearchShard_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "service.proto",
+}
+
+// IndexMetadataServiceClient is the client API for IndexMetadataService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type IndexMetadataServiceClient interface {
+	AllocateShard(ctx context.Context, in *AllocateShardRequest, opts ...grpc.CallOption) (*AllocateShardResponse, error)
+	CompleteShard(ctx context.Context, in *CompleteShardRequest, opts ...grpc.CallOption) (*CompleteShardResponse, error)
+	GetShard(ctx context.Context, in *GetShardRequest, opts ...grpc.CallOption) (*GetShardResponse, error)
+	SearchShards(ctx context.Context, in *SearchShardsRequest, opts ...grpc.CallOption) (*SearchShardsResponse, error)
+	UpdateRepoShard(ctx context.Context, in *UpdateRepoShardRequest, opts ...grpc.CallOption) (*UpdateRepoShardResponse, error)
+}
+
+type indexMetadataServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewIndexMetadataServiceClient(cc grpc.ClientConnInterface) IndexMetadataServiceClient {
+	return &indexMetadataServiceClient{cc}
+}
+
+func (c *indexMetadataServiceClient) AllocateShard(ctx context.Context, in *AllocateShardRequest, opts ...grpc.CallOption) (*AllocateShardResponse, error) {
+	out := new(AllocateShardResponse)
+	err := c.cc.Invoke(ctx, "/codesearch.IndexMetadataService/AllocateShard", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexMetadataServiceClient) CompleteShard(ctx context.Context, in *CompleteShardRequest, opts ...grpc.CallOption) (*CompleteShardResponse, error) {
+	out := new(CompleteShardResponse)
+	err := c.cc.Invoke(ctx, "/codesearch.IndexMetadataService/CompleteShard", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexMetadataServiceClient) GetShard(ctx context.Context, in *GetShardRequest, opts ...grpc.CallOption) (*GetShardResponse, error) {
+	out := new(GetShardResponse)
+	err := c.cc.Invoke(ctx, "/codesearch.IndexMetadataService/GetShard", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexMetadataServiceClient) SearchShards(ctx context.Context, in *SearchShardsRequest, opts ...grpc.CallOption) (*SearchShardsResponse, error) {
+	out := new(SearchShardsResponse)
+	err := c.cc.Invoke(ctx, "/codesearch.IndexMetadataService/SearchShards", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexMetadataServiceClient) UpdateRepoShard(ctx context.Context, in *UpdateRepoShardRequest, opts ...grpc.CallOption) (*UpdateRepoShardResponse, error) {
+	out := new(UpdateRepoShardResponse)
+	err := c.cc.Invoke(ctx, "/codesearch.IndexMetadataService/UpdateRepoShard", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// IndexMetadataServiceServer is the server API for IndexMetadataService service.
+type IndexMetadataServiceServer interface {
+	AllocateShard(context.Context, *AllocateShardRequest) (*AllocateShardResponse, error)
+	CompleteShard(context.Context, *CompleteShardRequest) (*CompleteShardResponse, error)
+	GetShard(context.Context, *GetShardRequest) (*GetShardResponse, error)
+	SearchShards(context.Context, *SearchShardsRequest) (*SearchShardsResponse, error)
+	UpdateRepoShard(context.Context, *UpdateRepoShardRequest) (*UpdateRepoShardResponse, error)
+}
+
+// UnimplementedIndexMetadataServiceServer can be embedded to have forward compatible implementations.
+type UnimplementedIndexMetadataServiceServer struct {
+}
+
+func (*UnimplementedIndexMetadataServiceServer) AllocateShard(context.Context, *AllocateShardRequest) (*AllocateShardResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AllocateShard not implemented")
+}
+func (*UnimplementedIndexMetadataServiceServer) CompleteShard(context.Context, *CompleteShardRequest) (*CompleteShardResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CompleteShard not implemented")
+}
+func (*UnimplementedIndexMetadataServiceServer) GetShard(context.Context, *GetShardRequest) (*GetShardResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetShard not implemented")
+}
+func (*UnimplementedIndexMetadataServiceServer) SearchShards(context.Context, *SearchShardsRequest) (*SearchShardsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SearchShards not implemented")
+}
+func (*UnimplementedIndexMetadataServiceServer) UpdateRepoShard(context.Context, *UpdateRepoShardRequest) (*UpdateRepoShardResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateRepoShard not implemented")
+}
+
+func RegisterIndexMetadataServiceServer(s *grpc.Server, srv IndexMetadataServiceServer) {
+	s.RegisterService(&_IndexMetadataService_serviceDesc, srv)
+}
+
+func _IndexMetadataService_AllocateShard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AllocateShardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexMetadataServiceServer).AllocateShard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/codesearch.IndexMetadataService/AllocateShard",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexMetadataServiceServer).AllocateShard(ctx, req.(*AllocateShardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IndexMetadataService_CompleteShard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteShardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexMetadataServiceServer).CompleteShard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/codesearch.IndexMetadataService/CompleteShard",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexMetadataServiceServer).CompleteShard(ctx, req.(*CompleteShardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IndexMetadataService_GetShard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetShardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexMetadataServiceServer).GetShard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/codesearch.IndexMetadataService/GetShard",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexMetadataServiceServer).GetShard(ctx, req.(*GetShardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IndexMetadataService_SearchShards_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchShardsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexMetadataServiceServer).SearchShards(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/codesearch.IndexMetadataService/SearchShards",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexMetadataServiceServer).SearchShards(ctx, req.(*SearchShardsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _IndexMetadataService_UpdateRepoShard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateRepoShardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IndexMetadataServiceServer).UpdateRepoShard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/codesearch.IndexMetadataService/UpdateRepoShard",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IndexMetadataServiceServer).UpdateRepoShard(ctx, req.(*UpdateRepoShardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+var _IndexMetadataService_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "codesearch.IndexMetadataService",
+	HandlerType: (*IndexMetadataServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "AllocateShard",
+			Handler:    _IndexMetadataService_AllocateShard_Handler,
+		},
+		{
+			MethodName: "CompleteShard",
+			Handler:    _IndexMetadataService_CompleteShard_Handler,
+		},
+		{
+			MethodName: "GetShard",
+			Handler:    _IndexMetadataService_GetShard_Handler,
+		},
+		{
+			MethodName: "SearchShards",
+			Handler:    _IndexMetadataService_SearchShards_Handler,
+		},
+		{
+			MethodName: "UpdateRepoShard",
+			Handler:    _IndexMetadataService_UpdateRepoShard_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
