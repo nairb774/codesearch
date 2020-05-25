@@ -322,6 +322,7 @@ func main() {
 
 	g := grpc.NewServer()
 	reflection.Register(g)
+	service.RegisterIndexMetadataServiceServer(g, indexMetadataServer{})
 	service.RegisterSearchShardServiceServer(g, s)
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", *port))
 	if err != nil {
