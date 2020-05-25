@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
@@ -14,15 +15,19 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/google/codesearch/cmd/cindex-serve/service"
 	"github.com/google/codesearch/index2"
-	"github.com/google/codesearch/repo"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
-	repoPath     = flag.String("repo", "", "Path to repo")
-	repoName     = flag.String("name", "", "Name of the repo")
-	revisionFlag = revFlag{plumbing.Revision("HEAD")}
-	force        = flag.Bool("force", false, "Force indexing even if shard exists")
+	indexMetadataService = flag.String("index_metadata_service", "localhost:8801", "Location to find the IndexMetadataService.")
+	repoPath             = flag.String("repo", "", "Path to repo")
+	repoName             = flag.String("name", "", "Name of the repo")
+	revisionFlag         = revFlag{plumbing.Revision("HEAD")}
+	force                = flag.Bool("force", false, "Force indexing even if shard exists")
 )
 
 func init() {
@@ -76,23 +81,16 @@ func indexRepo(c *object.Commit) (*index.IndexWriter, error) {
 	})
 }
 
-func setManifestData(m *repo.Manifest, name string, rev plumbing.Revision, hash plumbing.Hash, shardID repo.ShardID) error {
-	r := m.GetOrCreateRepo(name)
-	if r.DefaultRevision == "" {
-		r.DefaultRevision = rev.String()
-	}
-	repoRev := r.GetOrCreateRevision(rev)
-	repoRev.CommitHash = hash.String()
-	repoRev.ShardID = shardID
-
-	if !m.ReconcileShardStates() {
-		return fmt.Errorf("unable to reconcile %#v", m)
-	}
-	return nil
-}
-
 func main() {
 	flag.Parse()
+
+	ctx := context.Background()
+
+	conn, err := grpc.DialContext(ctx, *indexMetadataService, grpc.WithInsecure())
+	if err != nil {
+		log.Fatal(err)
+	}
+	indexMetadata := service.NewIndexMetadataServiceClient(conn)
 
 	gitRepo, err := git.PlainOpen(*repoPath)
 	if err != nil {
@@ -113,67 +111,80 @@ func main() {
 		*repoName = *repoPath
 	}
 
-	var shardID repo.ShardID
-	{
-		manifest, err := repo.LoadManifest(index.RepoDir())
+	if !*force {
+		switch resp, err := indexMetadata.GetRepoRevision(ctx, &service.GetRepoRevisionRequest{
+			RepoName: *repoName,
+			Revision: revisionFlag.Revision.String(),
+		}); status.Code(err) {
+		case codes.OK:
+			if resp.GetRevision().GetCommitHash() == hash.String() {
+				log.Printf("Already indexed %v@%v:%v", *repoName, revisionFlag, hash)
+				return
+			}
+
+		case codes.NotFound:
+		default:
+			log.Fatal(err)
+		}
+
+		// See if the tree exists?
+		shards, err := indexMetadata.SearchShards(ctx, &service.SearchShardsRequest{
+			TreeHash: c.TreeHash.String(),
+			States: []service.Shard_State{
+				service.Shard_UNREFERENCED,
+				service.Shard_REFERENCED,
+			},
+		})
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		done := false
-		if *force {
-			shardID = manifest.CreateShard(c.TreeHash)
-		} else if manifest.Repos[*repoName].GetRevision(revisionFlag.Revision).GetCommitHash() == *hash {
-			log.Printf("Already indexed %v@%v:%v", *repoName, revisionFlag, hash)
-			return
-		} else {
-			var ok bool
-			shardID, ok = manifest.ReferencableShard(c.TreeHash)
-			if ok {
-				if err := setManifestData(manifest, *repoName, revisionFlag.Revision, *hash, shardID); err != nil {
-					log.Fatal(err)
-				}
-				done = true
-			} else {
-				shardID = manifest.CreateShard(c.TreeHash)
+		// Found an existing shard, update to that:
+		if len(shards.GetShardIds()) > 0 {
+			if _, err := indexMetadata.UpdateRepoShard(ctx, &service.UpdateRepoShardRequest{
+				RepoName:   *repoName,
+				Revision:   revisionFlag.Revision.String(),
+				CommitHash: hash.String(),
+				ShardId:    shards.GetShardIds()[0],
+			}); err != nil {
+				log.Fatal(err)
 			}
-		}
-
-		if err := repo.WriteManifest(manifest, index.RepoDir()); err != nil {
-			log.Fatal(err)
-		}
-
-		if done {
 			return
 		}
 	}
 
-	path := filepath.Join(index.ShardDir(), shardID.String())
-
-	// Build new index shards
+	// Build new index shard
 	s, err := indexRepo(c)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	resp, err := indexMetadata.AllocateShard(ctx, &service.AllocateShardRequest{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	path := filepath.Join(index.ShardDir(), resp.GetShard().GetId())
 	shardSize, sha256, err := writeShard(s, path)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	manifest, err := repo.LoadManifest(index.RepoDir())
-	if err != nil {
+	if _, err := indexMetadata.CompleteShard(ctx, &service.CompleteShardRequest{
+		ShardId:  resp.GetShard().GetId(),
+		TreeHash: c.TreeHash.String(),
+		Size:     shardSize,
+		Sha256:   hex.EncodeToString(sha256[:]),
+	}); err != nil {
 		log.Fatal(err)
 	}
 
-	if shard := manifest.Shards[shardID]; !shard.Created(shardSize, hex.EncodeToString(sha256[:])) {
-		log.Fatalf("shard %v in bad state %#v", shardID, shard)
-	}
-
-	if err := setManifestData(manifest, *repoName, revisionFlag.Revision, *hash, shardID); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := repo.WriteManifest(manifest, index.RepoDir()); err != nil {
+	if _, err := indexMetadata.UpdateRepoShard(ctx, &service.UpdateRepoShardRequest{
+		RepoName:   *repoName,
+		Revision:   revisionFlag.Revision.String(),
+		CommitHash: hash.String(),
+		ShardId:    resp.GetShard().GetId(),
+	}); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"regexp/syntax"
+	"sort"
 
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/google/codesearch/cmd/cindex-serve/cache"
@@ -210,7 +211,7 @@ func manifestTxn(ctx context.Context, f func(*repo.Manifest) error) error {
 func (indexMetadataServer) AllocateShard(ctx context.Context, req *service.AllocateShardRequest) (*service.AllocateShardResponse, error) {
 	var resp *service.AllocateShardResponse
 	err := manifestTxn(ctx, func(manifest *repo.Manifest) error {
-		id := manifest.CreateShard(plumbing.NewHash(req.GetTreeHash()))
+		id := manifest.CreateShard()
 		resp = &service.AllocateShardResponse{
 			Shard: convertShard(id, manifest.Shards[id]),
 		}
@@ -230,7 +231,7 @@ func (indexMetadataServer) CompleteShard(ctx context.Context, req *service.Compl
 		if s == nil {
 			return status.Errorf(codes.NotFound, "shard %q does not exist", req.GetShardId())
 		}
-		if !s.Created(req.GetSize(), req.GetSha256()) {
+		if !s.Created(plumbing.NewHash(req.GetTreeHash()), req.GetSize(), req.GetSha256()) {
 			return status.Errorf(codes.FailedPrecondition, "shard %q in state %s unable to be marked created", req.GetShardId(), s.State)
 		}
 		return nil
@@ -279,10 +280,89 @@ func (indexMetadataServer) SearchShards(ctx context.Context, req *service.Search
 		}
 	}
 
+	if states := req.GetStates(); len(states) > 0 {
+		repoStates := make([]repo.State, len(states))
+		for i, s := range states {
+			switch s {
+			case service.Shard_CREATING:
+				repoStates[i] = repo.CreatingState
+			case service.Shard_UNREFERENCED:
+				repoStates[i] = repo.UnreferencedState
+			case service.Shard_REFERENCED:
+				repoStates[i] = repo.ReferencedState
+			case service.Shard_DELETING:
+				repoStates[i] = repo.DeletingState
+			}
+		}
+		inner := filter
+		filter = func(id repo.ShardID, s *repo.Shard) {
+			for _, state := range repoStates {
+				if s.State == state {
+					inner(id, s)
+					break
+				}
+			}
+		}
+	}
+
 	for id, s := range manifest.Shards {
 		filter(id, s)
 	}
 	return resp, nil
+}
+
+func convertRepoRevision(repoName, revision string, rev *repo.RepoRevision, shard *repo.Shard) *service.RepoRevision {
+	return &service.RepoRevision{
+		RepoName:   repoName,
+		Revision:   revision,
+		CommitHash: rev.CommitHash,
+		Shard:      convertShard(rev.ShardID, shard),
+	}
+}
+
+func (indexMetadataServer) GetRepo(ctx context.Context, req *service.GetRepoRequest) (*service.GetRepoResponse, error) {
+	manifest, err := repo.LoadManifest(index.RepoDir())
+	if err != nil {
+		return nil, err
+	}
+
+	repo := manifest.Repos[req.GetRepoName()]
+	if repo == nil {
+		return nil, status.Errorf(codes.NotFound, "repo %q does not exist", req.GetRepoName())
+	}
+
+	revisions := make([]string, 0, len(repo.Revisions))
+	for k := range repo.Revisions {
+		revisions = append(revisions, k)
+	}
+	sort.Strings(revisions)
+
+	rev := repo.Revisions[repo.DefaultRevision]
+	return &service.GetRepoResponse{
+		DefaultRevision: convertRepoRevision(req.GetRepoName(), repo.DefaultRevision, rev, manifest.Shards[rev.ShardID]),
+		Revisions:       revisions,
+	}, nil
+}
+
+func (indexMetadataServer) GetRepoRevision(ctx context.Context, req *service.GetRepoRevisionRequest) (*service.GetRepoRevisionResponse, error) {
+	manifest, err := repo.LoadManifest(index.RepoDir())
+	if err != nil {
+		return nil, err
+	}
+
+	repo := manifest.Repos[req.GetRepoName()]
+	if repo == nil {
+		return nil, status.Errorf(codes.NotFound, "repo %q does not exist", req.GetRepoName())
+	}
+
+	revision := repo.Revisions[req.GetRevision()]
+	if revision == nil {
+		return nil, status.Errorf(codes.NotFound, "revision %q does not exist", req.GetRevision())
+	}
+
+	return &service.GetRepoRevisionResponse{
+		Revision: convertRepoRevision(req.GetRepoName(), req.GetRevision(), revision, manifest.Shards[revision.ShardID]),
+	}, nil
 }
 
 func (indexMetadataServer) UpdateRepoShard(ctx context.Context, req *service.UpdateRepoShardRequest) (*service.UpdateRepoShardResponse, error) {
@@ -296,7 +376,7 @@ func (indexMetadataServer) UpdateRepoShard(ctx context.Context, req *service.Upd
 			return status.Errorf(codes.NotFound, "shard %q does not exist", req.GetShardId())
 		}
 
-		r := m.GetOrCreateRepo(req.GetRepo())
+		r := m.GetOrCreateRepo(req.GetRepoName())
 		if r.DefaultRevision == "" {
 			r.DefaultRevision = req.GetRevision()
 		}

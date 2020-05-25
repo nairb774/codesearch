@@ -62,11 +62,11 @@ func (s *ShardID) UnmarshalText(text []byte) error {
 type Manifest struct {
 	// Repos holds information about currently indexed repositories, keyed by the
 	// repository name.
-	Repos map[string]*Repo
+	Repos map[string]*Repo `json:",omitempty"`
 
 	// Shards holds information about shard files that are available. Keyed by
 	// the shard ID.
-	Shards map[ShardID]*Shard
+	Shards map[ShardID]*Shard `json:",omitempty"`
 
 	// Revision is managed automatically - do not edit.
 	Revision uint64
@@ -104,7 +104,7 @@ func (m *Manifest) ReferencableShard(hash plumbing.Hash) (ShardID, bool) {
 	return ShardID{}, false
 }
 
-func (m *Manifest) CreateShard(hash plumbing.Hash) ShardID {
+func (m *Manifest) CreateShard() ShardID {
 	var id ShardID
 	for {
 		id = ShardID(rid())
@@ -112,10 +112,7 @@ func (m *Manifest) CreateShard(hash plumbing.Hash) ShardID {
 			break
 		}
 	}
-	s := &Shard{
-		AllocatedAt: time.Now(),
-		TreeHash:    hash.String(),
-	}
+	s := &Shard{AllocatedAt: time.Now()}
 	if !s.transition(allocate) {
 		panic("Unable to allocate")
 	}
@@ -200,11 +197,11 @@ type Shard struct {
 	// AllocatedAt is the timea t which the shard was allocated.
 	AllocatedAt time.Time
 
-	// TreeHash is the git hash of the tree object this shard was created from.
-	TreeHash string
-
 	// CreatedAt is the time of the created transition.
 	CreatedAt *time.Time `json:",omitempty"`
+
+	// TreeHash is the git hash of the tree object this shard was created from.
+	TreeHash string `json:",omitempty"`
 
 	// Size is the size of the shard - only set once created.
 	Size uint64 `json:",omitempty"`
@@ -268,11 +265,12 @@ func (s *Shard) transition(action action) bool {
 	return ok
 }
 
-func (s *Shard) Created(size uint64, sha256 string) bool {
+func (s *Shard) Created(hash plumbing.Hash, size uint64, sha256 string) bool {
 	ok := s.transition(created)
 	if ok && s.CreatedAt == nil {
 		now := time.Now()
 		s.CreatedAt = &now
+		s.TreeHash = hash.String()
 		s.Size = size
 		s.SHA256 = sha256
 	}

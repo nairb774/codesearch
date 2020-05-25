@@ -44,6 +44,13 @@ service SearchShardService {
   rpc SearchShard(SearchShardRequest) returns (SearchShardResponse) {}
 }
 
+message RepoRevision {
+  string repo_name = 1;
+  string revision = 2;
+  string commit_hash = 3;
+  Shard shard = 4;
+}
+
 // Shard represents an index shard.
 message Shard {
   string id = 1;
@@ -79,9 +86,6 @@ message Shard {
 }
 
 message AllocateShardRequest {
-  // The tree hash of the index being created. There can be multiple shards
-  // with the same tree_hash.
-  string tree_hash = 1;
 }
 
 message AllocateShardResponse {
@@ -93,11 +97,15 @@ message CompleteShardRequest {
   // The shard_id to mark completed.
   string shard_id = 1;
 
+  // The tree hash of the index being created. There can be multiple shards
+  // with the same tree_hash.
+  string tree_hash = 2;
+
   // The final size of the generated shard.
-  uint64 size = 2;
+  uint64 size = 3;
 
   // The sha256 sum of the shard contents.
-  string sha256 = 3;
+  string sha256 = 4;
 }
 
 message CompleteShardResponse {
@@ -114,6 +122,8 @@ message GetShardResponse {
 message SearchShardsRequest {
   // If set only shards matching this tree hash will be returned.
   string tree_hash = 1;
+
+  repeated Shard.State states = 2;
 }
 
 message SearchShardsResponse {
@@ -121,9 +131,27 @@ message SearchShardsResponse {
   repeated string shard_ids = 1;
 }
 
+message GetRepoRequest {
+  string repo_name = 1;
+}
+
+message GetRepoResponse {
+  RepoRevision default_revision = 1;
+  repeated string revisions = 2;
+}
+
+message GetRepoRevisionRequest {
+  string repo_name = 1;
+  string revision = 2;
+}
+
+message GetRepoRevisionResponse {
+  RepoRevision revision = 1;
+}
+
 message UpdateRepoShardRequest {
   // The name of the repository to update.
-  string repo = 1;
+  string repo_name = 1;
 
   // The name of the revision (tag, branch, ref, ...).
   string revision = 2;
@@ -144,5 +172,7 @@ service IndexMetadataService {
   rpc GetShard(GetShardRequest) returns (GetShardResponse) {}
   rpc SearchShards(SearchShardsRequest) returns (SearchShardsResponse) {}
 
+  rpc GetRepo(GetRepoRequest) returns (GetRepoResponse) {}
+  rpc GetRepoRevision(GetRepoRevisionRequest) returns (GetRepoRevisionResponse) {}
   rpc UpdateRepoShard(UpdateRepoShardRequest) returns (UpdateRepoShardResponse) {}
 }
