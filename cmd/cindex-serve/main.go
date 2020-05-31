@@ -438,6 +438,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	log.Print("Serving...")
+	log.Printf("Serving on %v", lis.Addr())
 	g.Serve(lis)
 }
