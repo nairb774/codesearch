@@ -10,9 +10,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/google/codesearch/cmd/cindex-serve/service"
@@ -24,27 +26,30 @@ import (
 
 var (
 	indexMetadataService = flag.String("index_metadata_service", "localhost:8801", "Location to find the IndexMetadataService.")
-	repoPath             = flag.String("repo", "", "Path to repo")
-	repoName             = flag.String("name", "", "Name of the repo")
-	revisionFlag         = revFlag{plumbing.Revision("HEAD")}
-	force                = flag.Bool("force", false, "Force indexing even if shard exists")
+	repoPath             = flag.String("repo", "", "Path to working repo")
+
+	repoURL  = flag.String("url", "", "Url of repo to index")
+	repoName = flag.String("name", "", "Name of the repo. If empty, will be determined from the URL")
+	ref      = refFlag{plumbing.HEAD}
+
+	force = flag.Bool("force", false, "Force indexing even if shard exists")
 )
 
 func init() {
-	flag.Var(&revisionFlag, "rev", "Revision to index")
+	flag.Var(&ref, "ref", "Ref to index")
 }
 
-type revFlag struct {
-	plumbing.Revision
+type refFlag struct {
+	plumbing.ReferenceName
 }
 
-var _ flag.Value = (*revFlag)(nil)
+var _ flag.Value = (*refFlag)(nil)
 
-func (r *revFlag) Set(v string) error {
-	r.Revision = plumbing.Revision(v)
+func (r *refFlag) Set(v string) error {
+	r.ReferenceName = plumbing.ReferenceName(v)
 	return nil
 }
-func (r *revFlag) String() string { return r.Revision.String() }
+func (r *refFlag) String() string { return r.ReferenceName.String() }
 
 func writeShard(iw *index.IndexWriter, path string) (uint64, [sha256.Size]byte, error) {
 	b, err := iw.ToBytes()
@@ -81,6 +86,65 @@ func indexRepo(c *object.Commit) (*index.IndexWriter, error) {
 	})
 }
 
+func simplifyURL(url string) string {
+	url = strings.TrimSuffix(url, ".git")
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
+
+	if prefix := "git@github.com:"; strings.HasPrefix(url, prefix) {
+		url = strings.TrimPrefix(url, prefix)
+		url = "github.com/" + url
+	}
+
+	return url
+}
+
+func syncRemote(repo *git.Repository, url string, ref plumbing.ReferenceName) (plumbing.ReferenceName, error) {
+	hash := sha256.Sum256([]byte(url))
+	hexHash := hex.EncodeToString(hash[:])
+	mappedRef := plumbing.NewRemoteReferenceName(hexHash, ref.String())
+
+	// This needs to be larger than git.maxHavesToVisitPerRef. The
+	// implementation, as of v5.1.0, tries to walk 100 commits to provide as
+	// "haves" to the remote during negotiation. If the depth is less than the
+	// number of objects walked, we get a really useful "object not found" error.
+	//
+	// TODO: Fix
+	// https://github.com/go-git/go-git/blob/8019144b6534ff58ad234a355e5b143f1c99b45e/remote.go#L635
+	// to pass in the shallow roots to prevent walking off the repo's history.
+	depth := 101
+	r, err := repo.Remote(hexHash)
+	if err == git.ErrRemoteNotFound {
+		log.Printf("Adding %s as remote %s", url, hexHash)
+		r, err = repo.CreateRemote(&config.RemoteConfig{
+			Name: hexHash,
+			URLs: []string{url},
+		})
+	} else if _, err := repo.Reference(mappedRef, false); err == nil {
+		depth = 0 // Just extend what we have already - no need to shorten.
+	}
+
+	if err != nil {
+		return mappedRef, err
+	}
+
+	refSpec := config.RefSpec(fmt.Sprintf("%v:%v", ref, mappedRef))
+	log.Printf("Fetching %v", refSpec)
+
+	_ = depth // TODO: Fix shallow handling in go-git
+	err = r.Fetch(&git.FetchOptions{
+		RefSpecs: []config.RefSpec{refSpec},
+		Depth:    0, // depth,
+		Progress: os.Stdout,
+		Tags:     git.NoTags,
+	})
+	if err == git.NoErrAlreadyUpToDate {
+		err = nil
+	}
+
+	return mappedRef, err
+}
+
 func main() {
 	flag.Parse()
 
@@ -97,28 +161,40 @@ func main() {
 		log.Fatal(err)
 	}
 
-	hash, err := gitRepo.ResolveRevision(revisionFlag.Revision)
+	localRefName, err := syncRemote(gitRepo, *repoURL, ref.ReferenceName)
+	if err != nil {
+		log.Fatalf("While syncing remote: %v", err)
+	}
+
+	resolved, err := gitRepo.Reference(localRefName, true)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	c, err := gitRepo.CommitObject(*hash)
+	c, err := gitRepo.CommitObject(resolved.Hash())
 	if err != nil {
-		log.Fatal(err)
+		t, tErr := gitRepo.TagObject(resolved.Hash())
+		if tErr != nil {
+			log.Fatal(err)
+		}
+		c, err = t.Commit()
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	if *repoName == "" {
-		*repoName = *repoPath
+		*repoName = simplifyURL(*repoURL)
 	}
 
 	if !*force {
-		switch resp, err := indexMetadata.GetRepoRevision(ctx, &service.GetRepoRevisionRequest{
+		switch resp, err := indexMetadata.GetRepoRef(ctx, &service.GetRepoRefRequest{
 			RepoName: *repoName,
-			Revision: revisionFlag.Revision.String(),
+			Ref:      ref.ReferenceName.String(),
 		}); status.Code(err) {
 		case codes.OK:
-			if resp.GetRevision().GetCommitHash() == hash.String() {
-				log.Printf("Already indexed %v@%v:%v", *repoName, revisionFlag, hash)
+			if resp.GetRevision().GetCommitHash() == c.Hash.String() {
+				log.Printf("Already indexed %v@%v:%v", *repoName, ref, c.Hash)
 				return
 			}
 
@@ -143,8 +219,8 @@ func main() {
 		if len(shards.GetShardIds()) > 0 {
 			if _, err := indexMetadata.UpdateRepoShard(ctx, &service.UpdateRepoShardRequest{
 				RepoName:   *repoName,
-				Revision:   revisionFlag.Revision.String(),
-				CommitHash: hash.String(),
+				Ref:        ref.ReferenceName.String(),
+				CommitHash: c.Hash.String(),
 				ShardId:    shards.GetShardIds()[0],
 			}); err != nil {
 				log.Fatal(err)
@@ -152,6 +228,8 @@ func main() {
 			return
 		}
 	}
+
+	log.Printf("Building index for %v", c)
 
 	// Build new index shard
 	s, err := indexRepo(c)
@@ -181,8 +259,8 @@ func main() {
 
 	if _, err := indexMetadata.UpdateRepoShard(ctx, &service.UpdateRepoShardRequest{
 		RepoName:   *repoName,
-		Revision:   revisionFlag.Revision.String(),
-		CommitHash: hash.String(),
+		Ref:        ref.ReferenceName.String(),
+		CommitHash: c.Hash.String(),
 		ShardId:    resp.GetShard().GetId(),
 	}); err != nil {
 		log.Fatal(err)

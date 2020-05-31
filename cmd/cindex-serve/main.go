@@ -311,10 +311,10 @@ func (indexMetadataServer) SearchShards(ctx context.Context, req *service.Search
 	return resp, nil
 }
 
-func convertRepoRevision(repoName, revision string, rev *repo.RepoRevision, shard *repo.Shard) *service.RepoRevision {
-	return &service.RepoRevision{
+func convertRepoRef(repoName, ref string, rev *repo.RepoRef, shard *repo.Shard) *service.RepoRef {
+	return &service.RepoRef{
 		RepoName:   repoName,
-		Revision:   revision,
+		Ref:        ref,
 		CommitHash: rev.CommitHash,
 		Shard:      convertShard(rev.ShardID, shard),
 	}
@@ -331,20 +331,20 @@ func (indexMetadataServer) GetRepo(ctx context.Context, req *service.GetRepoRequ
 		return nil, status.Errorf(codes.NotFound, "repo %q does not exist", req.GetRepoName())
 	}
 
-	revisions := make([]string, 0, len(repo.Revisions))
-	for k := range repo.Revisions {
-		revisions = append(revisions, k)
+	refs := make([]string, 0, len(repo.Refs))
+	for k := range repo.Refs {
+		refs = append(refs, k)
 	}
-	sort.Strings(revisions)
+	sort.Strings(refs)
 
-	rev := repo.Revisions[repo.DefaultRevision]
+	rev := repo.Refs[repo.DefaultRef]
 	return &service.GetRepoResponse{
-		DefaultRevision: convertRepoRevision(req.GetRepoName(), repo.DefaultRevision, rev, manifest.Shards[rev.ShardID]),
-		Revisions:       revisions,
+		DefaultRef: convertRepoRef(req.GetRepoName(), repo.DefaultRef, rev, manifest.Shards[rev.ShardID]),
+		Refs:       refs,
 	}, nil
 }
 
-func (indexMetadataServer) GetRepoRevision(ctx context.Context, req *service.GetRepoRevisionRequest) (*service.GetRepoRevisionResponse, error) {
+func (indexMetadataServer) GetRepoRef(ctx context.Context, req *service.GetRepoRefRequest) (*service.GetRepoRefResponse, error) {
 	manifest, err := repo.LoadManifest(index.RepoDir())
 	if err != nil {
 		return nil, err
@@ -355,13 +355,13 @@ func (indexMetadataServer) GetRepoRevision(ctx context.Context, req *service.Get
 		return nil, status.Errorf(codes.NotFound, "repo %q does not exist", req.GetRepoName())
 	}
 
-	revision := repo.Revisions[req.GetRevision()]
-	if revision == nil {
-		return nil, status.Errorf(codes.NotFound, "revision %q does not exist", req.GetRevision())
+	ref := repo.Refs[req.GetRef()]
+	if ref == nil {
+		return nil, status.Errorf(codes.NotFound, "ref %q does not exist", req.GetRef())
 	}
 
-	return &service.GetRepoRevisionResponse{
-		Revision: convertRepoRevision(req.GetRepoName(), req.GetRevision(), revision, manifest.Shards[revision.ShardID]),
+	return &service.GetRepoRefResponse{
+		Revision: convertRepoRef(req.GetRepoName(), req.GetRef(), ref, manifest.Shards[ref.ShardID]),
 	}, nil
 }
 
@@ -377,10 +377,10 @@ func (indexMetadataServer) UpdateRepoShard(ctx context.Context, req *service.Upd
 		}
 
 		r := m.GetOrCreateRepo(req.GetRepoName())
-		if r.DefaultRevision == "" {
-			r.DefaultRevision = req.GetRevision()
+		if r.DefaultRef == "" {
+			r.DefaultRef = req.GetRef()
 		}
-		repoRev := r.GetOrCreateRevision(plumbing.Revision(req.GetRevision()))
+		repoRev := r.GetOrCreateRef(plumbing.ReferenceName(req.GetRef()))
 		repoRev.CommitHash = req.GetCommitHash()
 		repoRev.ShardID = sID
 

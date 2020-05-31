@@ -126,7 +126,7 @@ func (m *Manifest) CreateShard() ShardID {
 func (m *Manifest) ReconcileShardStates() bool {
 	inUse := make(map[ShardID]bool, len(m.Shards))
 	for _, r := range m.Repos {
-		for _, r := range r.Revisions {
+		for _, r := range r.Refs {
 			inUse[r.ShardID] = true
 		}
 	}
@@ -143,34 +143,34 @@ func (m *Manifest) ReconcileShardStates() bool {
 }
 
 type Repo struct {
-	// DefaultRevision if set, is the revision to use for searching by default.
-	DefaultRevision string
+	// DefaultRef if set, is the ref to use for searching by default.
+	DefaultRef string
 
-	// Revision is the revision that is used for resolving the hash to index.
+	// Refs is the revision that is used for resolving the hash to index.
 	// This could be a tag or a branch name.
-	Revisions map[string]*RepoRevision
+	Refs map[string]*RepoRef
 }
 
-func (r *Repo) GetOrCreateRevision(name plumbing.Revision) (rev *RepoRevision) {
-	if r.Revisions == nil {
-		r.Revisions = make(map[string]*RepoRevision)
+func (r *Repo) GetOrCreateRef(name plumbing.ReferenceName) (rev *RepoRef) {
+	if r.Refs == nil {
+		r.Refs = make(map[string]*RepoRef)
 	}
-	rev = r.Revisions[name.String()]
+	rev = r.Refs[name.String()]
 	if rev == nil {
-		rev = &RepoRevision{}
-		r.Revisions[name.String()] = rev
+		rev = &RepoRef{}
+		r.Refs[name.String()] = rev
 	}
 	return
 }
 
-func (r *Repo) GetRevision(name plumbing.Revision) *RepoRevision {
+func (r *Repo) GetRef(name plumbing.ReferenceName) *RepoRef {
 	if r == nil {
 		return nil
 	}
-	return r.Revisions[name.String()]
+	return r.Refs[name.String()]
 }
 
-type RepoRevision struct {
+type RepoRef struct {
 	// CommitHash is the commit hash which was used for producing the index
 	// shards.
 	CommitHash string
@@ -179,14 +179,14 @@ type RepoRevision struct {
 	ShardID ShardID
 }
 
-func (r *RepoRevision) GetCommitHash() (hash plumbing.Hash) {
+func (r *RepoRef) GetCommitHash() (hash plumbing.Hash) {
 	if r != nil {
 		hash = plumbing.NewHash(r.CommitHash)
 	}
 	return
 }
 
-func (r *RepoRevision) GetShardID() (id ShardID) {
+func (r *RepoRef) GetShardID() (id ShardID) {
 	if r != nil {
 		id = r.ShardID
 	}

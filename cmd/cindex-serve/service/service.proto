@@ -44,9 +44,9 @@ service SearchShardService {
   rpc SearchShard(SearchShardRequest) returns (SearchShardResponse) {}
 }
 
-message RepoRevision {
+message RepoRef {
   string repo_name = 1;
-  string revision = 2;
+  string ref = 2;
   string commit_hash = 3;
   Shard shard = 4;
 }
@@ -136,25 +136,25 @@ message GetRepoRequest {
 }
 
 message GetRepoResponse {
-  RepoRevision default_revision = 1;
-  repeated string revisions = 2;
+  RepoRef default_ref = 1;
+  repeated string refs = 2;
 }
 
-message GetRepoRevisionRequest {
+message GetRepoRefRequest {
   string repo_name = 1;
-  string revision = 2;
+  string ref = 2;
 }
 
-message GetRepoRevisionResponse {
-  RepoRevision revision = 1;
+message GetRepoRefResponse {
+  RepoRef revision = 1;
 }
 
 message UpdateRepoShardRequest {
   // The name of the repository to update.
   string repo_name = 1;
 
-  // The name of the revision (tag, branch, ref, ...).
-  string revision = 2;
+  // The ref being updated.
+  string ref = 2;
 
   // The commit hash of the revision (for detecting the need to index).
   string commit_hash = 3;
@@ -173,6 +173,6 @@ service IndexMetadataService {
   rpc SearchShards(SearchShardsRequest) returns (SearchShardsResponse) {}
 
   rpc GetRepo(GetRepoRequest) returns (GetRepoResponse) {}
-  rpc GetRepoRevision(GetRepoRevisionRequest) returns (GetRepoRevisionResponse) {}
+  rpc GetRepoRef(GetRepoRefRequest) returns (GetRepoRefResponse) {}
   rpc UpdateRepoShard(UpdateRepoShardRequest) returns (UpdateRepoShardResponse) {}
 }
