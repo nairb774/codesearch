@@ -391,7 +391,7 @@ func (indexMetadataServer) GetRepoRef(ctx context.Context, req *service.GetRepoR
 	}
 
 	return &service.GetRepoRefResponse{
-		Revision: convertRepoRef(req.GetRepoName(), req.GetRef(), ref, manifest.Shards[ref.ShardID]),
+		RepoRef: convertRepoRef(req.GetRepoName(), req.GetRef(), ref, manifest.Shards[ref.ShardID]),
 	}, nil
 }
 

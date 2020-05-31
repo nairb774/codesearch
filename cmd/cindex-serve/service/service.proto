@@ -148,7 +148,7 @@ message GetRepoRefRequest {
 }
 
 message GetRepoRefResponse {
-  RepoRef revision = 1;
+  RepoRef repo_ref = 1;
 }
 
 message UpdateRepoShardRequest {

@@ -209,7 +209,7 @@ func main() {
 			Ref:      ref.ReferenceName.String(),
 		}); status.Code(err) {
 		case codes.OK:
-			if resp.GetRevision().GetCommitHash() == c.Hash.String() {
+			if resp.GetRepoRef().GetCommitHash() == c.Hash.String() {
 				log.Printf("Already indexed %v@%v:%v", *repoName, ref, c.Hash)
 				return
 			}
