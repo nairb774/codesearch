@@ -77,7 +77,7 @@ func (c *Cache) tryLoad(key string, size int) (Entry, error) {
 
 	for c.available < tokens {
 		key := *(c.lru.Remove(c.lru.Back()).(*string))
-		tokens := uint64(c.items[key].(*entry).allocatedSize())
+		tokens := c.items[key].(*entry).allocatedSize()
 		c.available += uint64(tokens)
 		c.inLRU -= uint64(tokens)
 		delete(c.items, key)
@@ -124,7 +124,7 @@ func (c *Cache) Release(e Entry) {
 		case <-e.done:
 			if e.err == nil {
 				e.entry.element = c.lru.PushFront(&e.entry.key)
-				tokens := uint64(e.entry.allocatedSize())
+				tokens := e.entry.allocatedSize()
 				c.inLRU += tokens
 				c.inUse -= tokens
 			}
@@ -142,7 +142,7 @@ func (c *Cache) Release(e Entry) {
 		defer c.mu.Unlock()
 		if e.count--; e.count == 0 {
 			e.element = c.lru.PushFront(&e.key)
-			tokens := uint64(e.allocatedSize())
+			tokens := e.allocatedSize()
 			c.inLRU += tokens
 			c.inUse -= tokens
 		}
@@ -155,7 +155,7 @@ func (c *Cache) finish(l *loading) {
 
 	if l.err != nil {
 		delete(c.items, l.entry.key)
-		tokens := uint64(l.entry.allocatedSize())
+		tokens := l.entry.allocatedSize()
 		c.inUse -= tokens
 		c.available += tokens
 		l.entry.body = nil
@@ -231,7 +231,7 @@ type entry struct {
 
 func (e *entry) acquire(c *Cache) {
 	if e.count++; e.count == 1 {
-		tokens := uint64(e.allocatedSize())
+		tokens := e.allocatedSize()
 		c.inLRU -= tokens
 		c.inUse += tokens
 		c.lru.Remove(e.element)
@@ -240,4 +240,4 @@ func (e *entry) acquire(c *Cache) {
 }
 
 func (e *entry) Get(context.Context) ([]byte, error) { return e.body, nil }
-func (e *entry) allocatedSize() int                  { return len(e.body) }
+func (e *entry) allocatedSize() uint64               { return uint64(len(e.body)) }
