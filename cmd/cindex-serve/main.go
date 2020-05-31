@@ -3,10 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -32,28 +30,24 @@ var (
 	port      = flag.Int("port", 0, "Port to listen on")
 )
 
-var (
-	ErrNotFound = errors.New("Not found")
-)
+type cacheLoader struct{}
 
-func getSize(ctx context.Context, key string) (int, error) {
-	name := filepath.Join(index.ShardDir(), key)
-	s, err := os.Stat(name)
-	if err != nil {
+func (cacheLoader) Size(ctx context.Context, name string) (uint32, error) {
+	s, err := os.Stat(filepath.Join(index.ShardDir(), name))
+	if err == nil {
 		return 0, err
 	}
-	return int(s.Size()), nil
+	return uint32(s.Size()), nil
 }
 
-func load(ctx context.Context, key string, v []byte) error {
-	name := filepath.Join(index.ShardDir(), key)
-	f, err := os.Open(name)
+func (cacheLoader) Load(ctx context.Context, name string, offset uint64, body []byte) error {
+	f, err := os.Open(filepath.Join(index.ShardDir(), name))
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	log.Printf("Loading: %s", key)
-	_, err = io.ReadFull(f, v)
+	log.Printf("Loading %s @ %v for %v", name, offset, len(body))
+	_, err = f.ReadAt(body, int64(offset))
 	return err
 }
 
@@ -97,6 +91,10 @@ type server struct {
 var _ service.SearchShardServiceServer = (*server)(nil)
 
 func (s *server) SearchShard(ctx context.Context, req *service.SearchShardRequest) (*service.SearchShardResponse, error) {
+	if len(req.GetShardSha256()) != len(index.SHA256{}) {
+		return nil, status.Errorf(codes.InvalidArgument, "shard_sha256 wrong length %v, want %v", len(req.GetShardSha256()), len(index.SHA256{}))
+	}
+
 	syn, err := syntax.Parse(req.GetExpression(), syntax.Perl)
 	if err != nil {
 		return nil, err
@@ -108,7 +106,9 @@ func (s *server) SearchShard(ctx context.Context, req *service.SearchShardReques
 		return nil, err
 	}
 
-	e := s.cache.Acquire(req.GetShardId())
+	var sha index.SHA256
+	copy(sha[:], req.GetShardSha256())
+	e := s.cache.Acquire(sha, req.GetShardId(), cache.LoadParams{})
 	defer s.cache.Release(e)
 
 	v, err := e.Get(ctx)
@@ -181,7 +181,7 @@ func convertShard(id repo.ShardID, s *repo.Shard) *service.Shard {
 		TreeHash: s.TreeHash,
 		State:    state,
 		Size:     s.Size,
-		Sha256:   s.SHA256,
+		Sha256:   s.SHA256[:],
 	}
 }
 
@@ -226,12 +226,18 @@ func (indexMetadataServer) CompleteShard(ctx context.Context, req *service.Compl
 		return nil, err
 	}
 
+	if len(req.GetSha256()) != len(index.SHA256{}) {
+		return nil, status.Errorf(codes.InvalidArgument, "sha256 wrong length %v, want %v", len(req.GetSha256()), len(index.SHA256{}))
+	}
+	var sha index.SHA256
+	copy(sha[:], req.GetSha256())
+
 	return &service.CompleteShardResponse{}, manifestTxn(ctx, func(manifest *repo.Manifest) error {
 		s := manifest.Shards[sID]
 		if s == nil {
 			return status.Errorf(codes.NotFound, "shard %q does not exist", req.GetShardId())
 		}
-		if !s.Created(plumbing.NewHash(req.GetTreeHash()), req.GetSize(), req.GetSha256()) {
+		if !s.Created(plumbing.NewHash(req.GetTreeHash()), req.GetSize(), sha) {
 			return status.Errorf(codes.FailedPrecondition, "shard %q in state %s unable to be marked created", req.GetShardId(), s.State)
 		}
 		return nil
@@ -397,7 +403,7 @@ func main() {
 	ctx := context.Background()
 
 	s := &server{
-		cache: cache.New(ctx, *cacheSize, getSize, load),
+		cache: cache.New(ctx, *cacheSize, cacheLoader{}),
 	}
 
 	g := grpc.NewServer()

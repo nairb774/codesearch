@@ -25,7 +25,9 @@ message Snippet {
 message SearchShardRequest {
   // Required.
   string shard_id = 1;
-  string expression = 2;
+  // Required.
+  bytes shard_sha256 = 2;
+  string expression = 3;
 }
 
 message SearchShardResponse {
@@ -82,7 +84,7 @@ message Shard {
   uint64 size = 4;
 
   // The hash is only valid when the shard is not in the CREATING state.
-  string sha256 = 5;
+  bytes sha256 = 5;
 }
 
 message AllocateShardRequest {
@@ -105,7 +107,7 @@ message CompleteShardRequest {
   uint64 size = 3;
 
   // The sha256 sum of the shard contents.
-  string sha256 = 4;
+  bytes sha256 = 4;
 }
 
 message CompleteShardResponse {

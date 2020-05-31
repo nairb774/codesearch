@@ -3,31 +3,38 @@ package cache
 import (
 	"container/list"
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"sync"
+
+	"github.com/google/codesearch/index2"
 )
 
 var (
 	ErrMemoryPressure = errors.New("not enough free meemory")
 )
 
-func New(ctx context.Context, available uint64, size func(context.Context, string) (int, error), load func(context.Context, string, []byte) error) *Cache {
+type CacheLoader interface {
+	Size(ctx context.Context, name string) (length uint32, err error)
+	Load(ctx context.Context, name string, offset uint64, body []byte) error
+}
+
+func New(ctx context.Context, available uint64, loader CacheLoader) *Cache {
 	return &Cache{
 		workCtx:   ctx,
-		size:      size,
-		load:      load,
-		items:     make(map[string]Entry),
+		loader:    loader,
+		items:     make(map[index.SHA256]Entry),
 		available: available,
 	}
 }
 
 type Cache struct {
 	workCtx context.Context
-	size    func(context.Context, string) (int, error)
-	load    func(context.Context, string, []byte) error
+	loader  CacheLoader
 
 	mu    sync.Mutex
-	items map[string]Entry
+	items map[index.SHA256]Entry
 	lru   list.List // *string (keys) - use * to avoid allocation.
 
 	available uint64 // Can immediately allocate
@@ -35,21 +42,28 @@ type Cache struct {
 	inUse     uint64 // count>0
 }
 
-func (c *Cache) Acquire(key string) Entry {
+type LoadParams struct {
+	Start  uint64
+	Length uint32
+}
+
+func (c *Cache) Acquire(key index.SHA256, name string, params LoadParams) Entry {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	e := c.innerAcquire(key)
 	if e == nil {
 		e = &prepare{
-			cache: c,
-			key:   key,
+			cache:  c,
+			key:    key,
+			name:   name,
+			params: params,
 		}
 	}
 	return e
 }
 
-func (c *Cache) innerAcquire(key string) Entry {
+func (c *Cache) innerAcquire(key index.SHA256) Entry {
 	e := c.items[key]
 	switch e := e.(type) {
 	case *loading:
@@ -62,7 +76,7 @@ func (c *Cache) innerAcquire(key string) Entry {
 	return e
 }
 
-func (c *Cache) tryLoad(key string, size int) (Entry, error) {
+func (c *Cache) tryLoad(key index.SHA256, name string, params LoadParams) (Entry, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -70,13 +84,13 @@ func (c *Cache) tryLoad(key string, size int) (Entry, error) {
 		return e, nil
 	}
 
-	tokens := uint64(size)
+	tokens := uint64(params.Length)
 	if c.available+c.inLRU < tokens {
 		return nil, ErrMemoryPressure
 	}
 
 	for c.available < tokens {
-		key := *(c.lru.Remove(c.lru.Back()).(*string))
+		key := *(c.lru.Remove(c.lru.Back()).(*index.SHA256))
 		tokens := c.items[key].(*entry).allocatedSize()
 		c.available += uint64(tokens)
 		c.inLRU -= uint64(tokens)
@@ -92,14 +106,19 @@ func (c *Cache) tryLoad(key string, size int) (Entry, error) {
 		done:   make(chan struct{}),
 		entry: &entry{
 			key:   key,
-			body:  make([]byte, size),
+			body:  make([]byte, int(params.Length)),
 			count: 1,
 		},
 	}
 
 	go func() {
 		defer cancel()
-		l.err = c.load(ctx, key, l.entry.body)
+		l.err = c.loader.Load(ctx, name, params.Start, l.entry.body)
+		if l.err == nil {
+			if got := sha256.Sum256(l.entry.body); got != key {
+				l.err = fmt.Errorf("%064x with %v got %064x", key, params, got)
+			}
+		}
 		c.finish(l)
 	}()
 
@@ -171,20 +190,26 @@ type Entry interface {
 }
 
 type prepare struct {
-	cache *Cache
-	key   string
+	cache  *Cache
+	key    index.SHA256
+	name   string
+	params LoadParams
 
 	entry Entry
 }
 
-func (p *prepare) Get(ctx context.Context) ([]byte, error) {
-	size, err := p.cache.size(ctx, p.key)
-	if err != nil {
-		return nil, err
-	}
-	p.entry, err = p.cache.tryLoad(p.key, size)
-	if err != nil {
-		return nil, err
+func (p *prepare) Get(ctx context.Context) (data []byte, err error) {
+	if p.entry == nil {
+		if p.params.Length == 0 {
+			p.params.Length, err = p.cache.loader.Size(ctx, p.name)
+			if err != nil {
+				return nil, err
+			}
+		}
+		p.entry, err = p.cache.tryLoad(p.key, p.name, p.params)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return p.entry.Get(ctx)
 }
@@ -216,7 +241,7 @@ func (l *loading) Get(ctx context.Context) ([]byte, error) {
 }
 
 type entry struct {
-	key  string
+	key  index.SHA256
 	body []byte
 
 	// References the current location in the LRU. Will only be set if `count` is

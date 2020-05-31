@@ -252,7 +252,7 @@ func main() {
 		ShardId:  resp.GetShard().GetId(),
 		TreeHash: c.TreeHash.String(),
 		Size:     shardSize,
-		Sha256:   hex.EncodeToString(sha256[:]),
+		Sha256:   sha256[:],
 	}); err != nil {
 		log.Fatal(err)
 	}

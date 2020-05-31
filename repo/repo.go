@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/google/codesearch/index2"
 	"github.com/google/orderedcode"
 )
 
@@ -206,7 +207,7 @@ type Shard struct {
 	// Size is the size of the shard - only set once created.
 	Size uint64 `json:",omitempty"`
 	// SHA256 of the shard - only set once created.
-	SHA256 string `json:",omitempty"`
+	SHA256 *index.SHA256 `json:",omitempty"`
 
 	// State holds the current state of the shard.
 	State State
@@ -265,14 +266,14 @@ func (s *Shard) transition(action action) bool {
 	return ok
 }
 
-func (s *Shard) Created(hash plumbing.Hash, size uint64, sha256 string) bool {
+func (s *Shard) Created(hash plumbing.Hash, size uint64, sha256 index.SHA256) bool {
 	ok := s.transition(created)
 	if ok && s.CreatedAt == nil {
 		now := time.Now()
 		s.CreatedAt = &now
 		s.TreeHash = hash.String()
 		s.Size = size
-		s.SHA256 = sha256
+		s.SHA256 = &sha256
 	}
 	return ok
 }

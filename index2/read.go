@@ -1,6 +1,8 @@
 package index
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io/ioutil"
 
@@ -10,6 +12,17 @@ import (
 )
 
 var ErrInvalidIndex = errors.New("index invalid")
+
+type SHA256 [sha256.Size]byte
+
+func (s SHA256) String() string { return hex.EncodeToString(s[:]) }
+func (s *SHA256) UnmarshalText(text []byte) error {
+	if len(text) != 2*len(s) {
+		return errors.New("ShardID of wrong length")
+	}
+	_, err := hex.Decode(s[:], text)
+	return err
+}
 
 func Open(buff []byte) *IndexShard {
 	return GetRootAsIndexShard(buff, 0)
