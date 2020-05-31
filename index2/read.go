@@ -42,6 +42,18 @@ func (h *GitHash) PlumbingHash() (ret plumbing.Hash) {
 	return
 }
 
+func (s *Sha256) Hash() (ret SHA256) {
+	t := s.Table()
+	copy(ret[:], t.Bytes[t.Pos:])
+	return
+}
+
+func (d *Doc) Hash() SHA256 {
+	var sha Sha256
+	d.Sha256(&sha)
+	return sha.Hash()
+}
+
 func (p *PostingLists) FindTrigram(trigram uint32, bitmap *roaring.Bitmap) error {
 	stride := 3
 	tgms := p.TrigramsBytes()
@@ -65,14 +77,6 @@ func (p *PostingLists) FindTrigram(trigram uint32, bitmap *roaring.Bitmap) error
 	}
 
 	return nil
-}
-
-func (g *Doc) PlumbingHash() (ret plumbing.Hash) {
-	var h GitHash
-	if g.Hash(&h) == nil {
-		return
-	}
-	return h.PlumbingHash()
 }
 
 func (i *IndexShard) PostingQuery(q *index.Query) *roaring.Bitmap {

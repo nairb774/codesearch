@@ -51,7 +51,7 @@ func (cacheLoader) Load(ctx context.Context, name string, offset uint64, body []
 	return err
 }
 
-func buildSnippets(doc *index.Doc, matches [][2]int) []*service.Snippet {
+func buildSnippets(doc *index.DocInner, matches [][2]int) []*service.Snippet {
 	snippets := make([]*service.Snippet, len(matches))
 	relMatches := make([]uint32, len(matches)*2)
 	b := doc.DataBytes()
@@ -130,7 +130,31 @@ func (s *server) SearchShard(ctx context.Context, req *service.SearchShardReques
 
 		var doc index.Doc
 		idx.Docs(&doc, int(fileid))
-		b := doc.DataBytes()
+
+		// Load DocInner
+		var rng index.ByteRange
+		doc.Range(&rng)
+
+		var docInnerBytes []byte
+		if rb := idx.RawBytes(); rb != nil {
+			start := rng.Start()
+			docInnerBytes = rb[start : start+uint64(rng.Length())]
+		} else {
+			e := s.cache.Acquire(doc.Hash(), req.GetShardId()+".raw", cache.LoadParams{
+				Start:  rng.Start(),
+				Length: rng.Length(),
+			})
+			defer s.cache.Release(e)
+
+			var err error
+			docInnerBytes, err = e.Get(ctx)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		in := index.GetRootAsDocInner(docInnerBytes, 0)
+		b := in.DataBytes()
 
 		matchRange = matchRange[:0]
 		off := 0
@@ -152,7 +176,7 @@ func (s *server) SearchShard(ctx context.Context, req *service.SearchShardReques
 		resp.Docs = append(resp.Docs, &service.Doc{
 			Id:       fileid,
 			Path:     string(doc.Path()),
-			Snippets: buildSnippets(&doc, matchRange),
+			Snippets: buildSnippets(in, matchRange),
 		})
 		return len(resp.Docs) < 100
 	})

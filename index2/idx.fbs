@@ -6,6 +6,23 @@ struct GitHash {
   e: uint32;
 }
 
+struct Sha256 {
+  a: uint32;
+  b: uint32;
+  c: uint32;
+  d: uint32;
+
+  e: uint32;
+  f: uint32;
+  g: uint32;
+  h: uint32;
+}
+
+struct ByteRange {
+  start: uint64;
+  length: uint32;
+}
+
 enum DocType : byte {
   Regular = 0,
   Executable,
@@ -14,10 +31,16 @@ enum DocType : byte {
 
 table Doc {
   path: string (required);
-  size: uint64;
+  range: ByteRange; // DocInner
+  size: uint32;
   mod_ns: int64;
-  hash: GitHash;
   type: DocType;
+  // Only set, if top level raw is not set.
+  sha256: Sha256;
+}
+
+table DocInner {
+  hash: GitHash;
 
   // Maps the block number to the number of the line containing the first byte
   // of the block.
@@ -41,6 +64,10 @@ table PostingLists {
 table IndexShard {
   docs: [Doc] (required); 
   lists: PostingLists (required);
+
+  // If present, raw data is stored inline, and all files are stored without
+  // sha256 hashes (would be redundant).
+  raw: [ubyte];
 }
 
 // root_type IndexShard;

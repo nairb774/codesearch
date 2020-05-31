@@ -3,6 +3,7 @@ package index
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -41,6 +42,9 @@ type IndexWriter struct {
 	lists          []*roaring.Bitmap
 
 	docs []*docMeta
+
+	raw       [][]byte
+	rawLength uint64
 }
 
 func (i *IndexWriter) Clear() {
@@ -51,14 +55,17 @@ func (i *IndexWriter) DocCount() int { return len(i.docs) }
 
 type docMeta struct {
 	path string
-	size uint64
+	size uint32
 	mod  time.Time
 	typ  DocType
 
-	hash plumbing.Hash
-	data []byte
+	ref innerDocRef
+}
 
-	blockToLine []uint32
+type innerDocRef struct {
+	sha256 SHA256
+	start  uint64
+	length uint32
 }
 
 func (i *IndexWriter) addFile(path string) (uint32, *docMeta) {
@@ -132,13 +139,6 @@ func computeTrigrams(set *sparse.Set, r io.Reader) ([]uint32, error) {
 		}
 	}
 
-	// Disable to improve coverage.
-	if false && set.Len() > 20000 {
-		return nil, &FileContentsError{
-			Msg: ErrTooManyTrigrams,
-		}
-	}
-
 	err := s.Err()
 	if err == bufio.ErrTooLong {
 		err = &FileContentsError{
@@ -147,6 +147,20 @@ func computeTrigrams(set *sparse.Set, r io.Reader) ([]uint32, error) {
 	}
 
 	return blockToLine, err
+}
+
+func (i *IndexWriter) addDocInnerToRaw(o docInnerW) innerDocRef {
+	b := flatbuffers.NewBuilder(1024 + len(o.data) + len(o.blockToLine)*4)
+	b.Finish(docInnerWrite(b, o))
+	hash := sha256.Sum256(b.FinishedBytes())
+	start, length := i.rawLength, uint32(len(b.FinishedBytes()))
+	i.raw = append(i.raw, b.FinishedBytes())
+	i.rawLength += uint64(length)
+	return innerDocRef{
+		sha256: hash,
+		start:  start,
+		length: length,
+	}
 }
 
 func (i *IndexWriter) Add(path string) error {
@@ -176,8 +190,13 @@ func (i *IndexWriter) Add(path string) error {
 		return err
 	}
 
+	ref := i.addDocInnerToRaw(docInnerW{
+		blockToLine: blockToLine,
+		data:        body.Bytes(),
+	})
+
 	id, doc := i.addFile(path)
-	doc.size = uint64(stat.Size())
+	doc.size = uint32(stat.Size())
 	doc.mod = stat.ModTime()
 	if mode := stat.Mode(); mode&os.ModeSymlink != 0 {
 		doc.typ = DocTypeSymlink
@@ -186,8 +205,7 @@ func (i *IndexWriter) Add(path string) error {
 	} else {
 		doc.typ = DocTypeRegular
 	}
-	doc.data = body.Bytes()
-	doc.blockToLine = blockToLine
+	doc.ref = ref
 
 	i.addTrigrams(id)
 
@@ -229,13 +247,17 @@ func (i *IndexWriter) AddObject(lastEdit time.Time, f *object.File) error {
 		return err
 	}
 
+	ref := i.addDocInnerToRaw(docInnerW{
+		hash:        f.Hash,
+		blockToLine: blockToLine,
+		data:        body.Bytes(),
+	})
+
 	id, doc := i.addFile(f.Name)
-	doc.size = uint64(f.Size)
+	doc.size = uint32(f.Size)
 	doc.mod = lastEdit
 	doc.typ = docType
-	doc.hash = f.Hash
-	doc.data = body.Bytes()
-	doc.blockToLine = blockToLine
+	doc.ref = ref
 
 	i.addTrigrams(id)
 
@@ -260,7 +282,7 @@ func uOffsetTVector(builder *flatbuffers.Builder, v []flatbuffers.UOffsetT) flat
 
 func gitHashWrite(builder *flatbuffers.Builder, hash plumbing.Hash) flatbuffers.UOffsetT {
 	// We read the data as 5 little endian numbers, this will then be written out
-	// at 5 little endian numbers into the byte stream. On the read side, we can
+	// as 5 little endian numbers into the byte stream. On the read side, we can
 	// just copy the bytes out without needing to encode/decode.
 	a := binary.LittleEndian.Uint32(hash[0:])
 	b := binary.LittleEndian.Uint32(hash[4:])
@@ -270,36 +292,65 @@ func gitHashWrite(builder *flatbuffers.Builder, hash plumbing.Hash) flatbuffers.
 	return CreateGitHash(builder, a, b, c, d, e)
 }
 
-type docW struct {
-	path        flatbuffers.UOffsetT
-	size        uint64
-	modNs       int64
+func sha256Write(builder *flatbuffers.Builder, hash *SHA256) flatbuffers.UOffsetT {
+	if hash == nil {
+		return 0
+	}
+	// We read the data as 8 little endian numbers, this will then be written out
+	// as 8 little endian numbers into the byte stream. On the read side, we can
+	// just copy the bytes out without needing to encode/decode.
+	a := binary.LittleEndian.Uint32(hash[0:])
+	b := binary.LittleEndian.Uint32(hash[4:])
+	c := binary.LittleEndian.Uint32(hash[8:])
+	d := binary.LittleEndian.Uint32(hash[12:])
+
+	e := binary.LittleEndian.Uint32(hash[16:])
+	f := binary.LittleEndian.Uint32(hash[20:])
+	g := binary.LittleEndian.Uint32(hash[24:])
+	h := binary.LittleEndian.Uint32(hash[28:])
+	return CreateSha256(builder, a, b, c, d, e, f, g, h)
+}
+
+type docInnerW struct {
 	hash        plumbing.Hash
-	typ         DocType
 	blockToLine []uint32
 	data        []byte
 }
 
-func docWrite(builder *flatbuffers.Builder, o docW) flatbuffers.UOffsetT {
-	var data flatbuffers.UOffsetT
-	if len(o.data) > 0 {
-		data = builder.CreateByteVector(o.data)
-	}
+func docInnerWrite(builder *flatbuffers.Builder, o docInnerW) flatbuffers.UOffsetT {
+	data := builder.CreateByteVector(o.data)
+
 	var blockToLine flatbuffers.UOffsetT
 	if len(o.blockToLine) > 0 {
 		blockToLine = uint32Vector(builder, o.blockToLine)
 	}
-	DocStart(builder)
-	DocAddData(builder, data)
-	if blockToLine != 0 {
-		DocAddBlockToLine(builder, blockToLine)
-	}
-	DocAddType(builder, o.typ)
+
+	DocInnerStart(builder)
+	DocInnerAddData(builder, data)
+	DocInnerAddBlockToLine(builder, blockToLine)
 	if !o.hash.IsZero() {
-		DocAddHash(builder, gitHashWrite(builder, o.hash))
+		DocInnerAddHash(builder, gitHashWrite(builder, o.hash))
 	}
+	return DocInnerEnd(builder)
+}
+
+type docW struct {
+	path   flatbuffers.UOffsetT
+	start  uint64
+	length uint32
+	size   uint32
+	modNs  int64
+	typ    DocType
+	sha256 *SHA256
+}
+
+func docWrite(builder *flatbuffers.Builder, o docW) flatbuffers.UOffsetT {
+	DocStart(builder)
+	DocAddSha256(builder, sha256Write(builder, o.sha256))
+	DocAddType(builder, o.typ)
 	DocAddModNs(builder, o.modNs)
 	DocAddSize(builder, o.size)
+	DocAddRange(builder, CreateByteRange(builder, o.start, o.length))
 	DocAddPath(builder, o.path)
 	return DocEnd(builder)
 }
@@ -331,28 +382,35 @@ func postingListsWrite(builder *flatbuffers.Builder, o postingListsW) flatbuffer
 type indexShardW struct {
 	docs  flatbuffers.UOffsetT
 	lists flatbuffers.UOffsetT
+	raw   flatbuffers.UOffsetT
 }
 
 func indexShardWrite(builder *flatbuffers.Builder, o indexShardW) flatbuffers.UOffsetT {
 	IndexShardStart(builder)
+	IndexShardAddRaw(builder, o.raw)
 	IndexShardAddLists(builder, o.lists)
 	IndexShardAddDocs(builder, o.docs)
 	return IndexShardEnd(builder)
 }
 
-func (i *IndexWriter) flushDocs(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
+func (i *IndexWriter) flushDocs(builder *flatbuffers.Builder, inlineRaw bool) flatbuffers.UOffsetT {
 	docs := make([]flatbuffers.UOffsetT, len(i.docs))
 	for idx := len(i.docs) - 1; idx >= 0; idx-- {
 		doc := i.docs[idx]
 
+		var sha256 *SHA256
+		if !inlineRaw {
+			sha256 = &doc.ref.sha256
+		}
+
 		docs[idx] = docWrite(builder, docW{
-			path:        builder.CreateSharedString(doc.path),
-			size:        doc.size,
-			modNs:       doc.mod.UnixNano(),
-			hash:        doc.hash,
-			typ:         doc.typ,
-			blockToLine: doc.blockToLine,
-			data:        doc.data,
+			path:   builder.CreateSharedString(doc.path),
+			start:  doc.ref.start,
+			length: doc.ref.length,
+			size:   doc.size,
+			modNs:  doc.mod.UnixNano(),
+			typ:    doc.typ,
+			sha256: sha256,
 		})
 	}
 
@@ -395,17 +453,32 @@ func (i *IndexWriter) flushPostingLists(builder *flatbuffers.Builder) (flatbuffe
 }
 
 func (i *IndexWriter) ToBytes() ([]byte, error) {
-	builder := flatbuffers.NewBuilder(2 << 20)
+	const maxInlineRaw = 16 << 20
+	builder := flatbuffers.NewBuilder(2<<20 + maxInlineRaw)
 
 	postingLists, err := i.flushPostingLists(builder)
 	if err != nil {
 		return nil, err
 	}
 
+	var raw flatbuffers.UOffsetT
+	if i.rawLength < 16<<20 {
+		flatRaw := make([]byte, 0, i.rawLength)
+		for _, r := range i.raw {
+			flatRaw = append(flatRaw, r...)
+		}
+		i.raw = nil
+		raw = builder.CreateByteVector(flatRaw)
+	}
+
 	builder.FinishWithFileIdentifier(indexShardWrite(builder, indexShardW{
-		docs:  i.flushDocs(builder),
+		docs:  i.flushDocs(builder, raw != 0),
 		lists: postingLists,
+		raw:   raw,
 	}), []byte("IXS2"))
 
 	return builder.FinishedBytes(), nil
 }
+
+// RawBytes provides access to the raw doc blob.
+func (i *IndexWriter) RawBytes() [][]byte { return i.raw }

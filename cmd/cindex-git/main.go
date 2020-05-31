@@ -58,13 +58,29 @@ func writeShard(iw *index.IndexWriter, path string) (uint64, [sha256.Size]byte, 
 	if err != nil {
 		return l, h, err
 	}
-	tmpFile := path + "~"
-	if err := ioutil.WriteFile(tmpFile, b, 0o600); err != nil {
-		os.Remove(tmpFile)
+
+	if err := ioutil.WriteFile(path, b, 0o666); err != nil {
 		return l, h, err
 	}
 
-	return l, h, os.Rename(tmpFile, path)
+	if rb := iw.RawBytes(); len(rb) > 0 {
+		f, err := os.OpenFile(path+".raw", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+		if err != nil {
+			return l, h, err
+		}
+
+		for _, b := range rb {
+			if _, err := f.Write(b); err != nil {
+				f.Close()
+				return l, h, err
+			}
+		}
+		if err := f.Close(); err != nil {
+			return l, h, err
+		}
+	}
+
+	return l, h, nil
 }
 
 func indexRepo(c *object.Commit) (*index.IndexWriter, error) {
