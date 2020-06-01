@@ -34,7 +34,7 @@ type cacheLoader struct{}
 
 func (cacheLoader) Size(ctx context.Context, name string) (uint32, error) {
 	s, err := os.Stat(filepath.Join(index.ShardDir(), name))
-	if err == nil {
+	if err != nil {
 		return 0, err
 	}
 	return uint32(s.Size()), nil
