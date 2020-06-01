@@ -151,6 +151,13 @@ message GetRepoRefResponse {
   RepoRef repo_ref = 1;
 }
 
+message ListRepoRefsRequest {
+}
+
+message ListRepoRefsResponse {
+  repeated RepoRef repo_refs = 1;
+}
+
 message UpdateRepoShardRequest {
   // The name of the repository to update.
   string repo_name = 1;
@@ -176,5 +183,6 @@ service IndexMetadataService {
 
   rpc GetRepo(GetRepoRequest) returns (GetRepoResponse) {}
   rpc GetRepoRef(GetRepoRefRequest) returns (GetRepoRefResponse) {}
+  rpc ListRepoRefs(ListRepoRefsRequest) returns (ListRepoRefsResponse) {}
   rpc UpdateRepoShard(UpdateRepoShardRequest) returns (UpdateRepoShardResponse) {}
 }

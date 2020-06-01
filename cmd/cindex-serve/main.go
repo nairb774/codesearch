@@ -398,6 +398,31 @@ func (indexMetadataServer) GetRepoRef(ctx context.Context, req *service.GetRepoR
 	}, nil
 }
 
+func (indexMetadataServer) ListRepoRefs(ctx context.Context, req *service.ListRepoRefsRequest) (*service.ListRepoRefsResponse, error) {
+	manifest, err := repo.LoadManifest(index.RepoDir())
+	if err != nil {
+		return nil, err
+	}
+
+	repos := make([]string, 0, len(manifest.Repos))
+	for name := range manifest.Repos {
+		repos = append(repos, name)
+	}
+	sort.Strings(repos)
+
+	resp := &service.ListRepoRefsResponse{
+		RepoRefs: make([]*service.RepoRef, len(repos)),
+	}
+
+	for i, name := range repos {
+		repo := manifest.Repos[name]
+		ref := repo.Refs[repo.DefaultRef]
+		resp.RepoRefs[i] = convertRepoRef(name, repo.DefaultRef, ref, manifest.Shards[ref.ShardID])
+	}
+
+	return resp, nil
+}
+
 func (indexMetadataServer) UpdateRepoShard(ctx context.Context, req *service.UpdateRepoShardRequest) (*service.UpdateRepoShardResponse, error) {
 	var sID repo.ShardID
 	if err := sID.UnmarshalText([]byte(req.GetShardId())); err != nil {
