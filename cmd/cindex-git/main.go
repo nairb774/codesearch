@@ -170,6 +170,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer conn.Close()
 	indexMetadata := service.NewIndexMetadataServiceClient(conn)
 
 	gitRepo, err := git.PlainOpen(*repoPath)
