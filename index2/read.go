@@ -15,6 +15,11 @@ var ErrInvalidIndex = errors.New("index invalid")
 
 type SHA256 [sha256.Size]byte
 
+func (s SHA256) MarshalText() (text []byte, err error) {
+	text = make([]byte, 2*len(s))
+	hex.Encode(text, s[:])
+	return
+}
 func (s SHA256) String() string { return hex.EncodeToString(s[:]) }
 func (s *SHA256) UnmarshalText(text []byte) error {
 	if len(text) != 2*len(s) {

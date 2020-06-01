@@ -200,13 +200,16 @@ func convertShard(id repo.ShardID, s *repo.Shard) *service.Shard {
 	case repo.DeletingState:
 		state = service.Shard_DELETING
 	}
-	return &service.Shard{
+	ret := &service.Shard{
 		Id:       id.String(),
 		TreeHash: s.TreeHash,
 		State:    state,
 		Size:     s.Size,
-		Sha256:   s.SHA256[:],
 	}
+	if s.SHA256 != nil {
+		ret.Sha256 = s.SHA256[:]
+	}
+	return ret
 }
 
 func manifestTxn(ctx context.Context, f func(*repo.Manifest) error) error {
