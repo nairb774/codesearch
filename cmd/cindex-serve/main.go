@@ -423,6 +423,23 @@ func (indexMetadataServer) ListRepoRefs(ctx context.Context, req *service.ListRe
 	return resp, nil
 }
 
+func (indexMetadataServer) SetDefaultRepoRef(ctx context.Context, req *service.SetDefaultRepoRefRequest) (*service.SetDefaultRepoRefResponse, error) {
+	return &service.SetDefaultRepoRefResponse{}, manifestTxn(ctx, func(m *repo.Manifest) error {
+		repo := m.Repos[req.GetRepoName()]
+		if repo == nil {
+			return status.Errorf(codes.NotFound, "repo %q does not exist", req.GetRepoName())
+		}
+
+		ref := repo.Refs[req.GetRef()]
+		if ref == nil {
+			return status.Errorf(codes.NotFound, "ref %q does not exist", req.GetRef())
+		}
+
+		repo.DefaultRef = req.GetRef()
+		return nil
+	})
+}
+
 func (indexMetadataServer) UpdateRepoShard(ctx context.Context, req *service.UpdateRepoShardRequest) (*service.UpdateRepoShardResponse, error) {
 	var sID repo.ShardID
 	if err := sID.UnmarshalText([]byte(req.GetShardId())); err != nil {
