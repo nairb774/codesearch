@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/codesearch/cmd/cindex-serve/service"
 	"github.com/google/codesearch/expr"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 )
 
@@ -87,7 +88,7 @@ var searchPage = template.Must(template.New("search").Parse(`
 		</form>
 	</div>
 	<div class="stats">Showing {{.ResultCount}} results in {{.Delay}}</div>
-	{{range .Results}}
+	{{range .Results}}{{range .}}
 		{{$basePath := printf "https://%s/blob/%s/%s" .Repo .Commit .Doc.Path}}
 		<div class="file">
 			<a href="{{$basePath}}"><div class="file-header">{{.Repo}}/{{.Doc.Path}}</div></a>
@@ -99,7 +100,7 @@ var searchPage = template.Must(template.New("search").Parse(`
 				</a>
 			{{end}}
 		</div>
-	{{end}}
+	{{end}}{{end}}
 </body>
 `))
 
@@ -117,7 +118,7 @@ func (s *server) Search(w http.ResponseWriter, req *http.Request) error {
 
 	data := struct {
 		Query       string
-		Results     []result
+		Results     [][]result
 		ResultCount int
 		Delay       time.Duration
 	}{
@@ -135,28 +136,39 @@ func (s *server) Search(w http.ResponseWriter, req *http.Request) error {
 			return err
 		}
 
-		for _, repoRef := range resp.GetRepoRefs() {
-			resp, err := s.search.SearchShard(ctx, &service.SearchShardRequest{
-				ShardId:     repoRef.GetShard().GetId(),
-				ShardSha256: repoRef.GetShard().GetSha256(),
-				Expression:  expr,
-				PathPrefix:  repoRef.GetRepoName() + "/",
-			})
-			if err != nil {
-				return err
-			}
-			for _, doc := range resp.GetDocs() {
-				data.Results = append(data.Results, result{
-					Repo:   repoRef.GetRepoName(),
-					Commit: repoRef.GetCommitHash(),
-					Doc:    doc,
+		data.Results = make([][]result, len(resp.GetRepoRefs()))
+		if err := func() error {
+			g, ctx := errgroup.WithContext(ctx)
+			for i, repoRef := range resp.GetRepoRefs() {
+				i, repoRef := i, repoRef
+				g.Go(func() error {
+					resp, err := s.search.SearchShard(ctx, &service.SearchShardRequest{
+						ShardId:     repoRef.GetShard().GetId(),
+						ShardSha256: repoRef.GetShard().GetSha256(),
+						Expression:  expr,
+						PathPrefix:  repoRef.GetRepoName() + "/",
+					})
+					if err != nil {
+						return err
+					}
+					for _, doc := range resp.GetDocs() {
+						data.Results[i] = append(data.Results[i], result{
+							Repo:   repoRef.GetRepoName(),
+							Commit: repoRef.GetCommitHash(),
+							Doc:    doc,
+						})
+						data.ResultCount += len(doc.GetSnippets())
+						// urlBase := fmt.Sprintf("%v/%v", urlBase, doc.GetPath())
+						// for _, snip := range doc.GetSnippets() {
+						// 	fmt.Printf("%s#L%d\n\n%s\n", urlBase, snip.GetFirstLine(), snip.GetLines())
+						// }
+					}
+					return nil
 				})
-				data.ResultCount += len(doc.GetSnippets())
-				// urlBase := fmt.Sprintf("%v/%v", urlBase, doc.GetPath())
-				// for _, snip := range doc.GetSnippets() {
-				// 	fmt.Printf("%s#L%d\n\n%s\n", urlBase, snip.GetFirstLine(), snip.GetLines())
-				// }
 			}
+			return g.Wait()
+		}(); err != nil {
+			return err
 		}
 	}
 
