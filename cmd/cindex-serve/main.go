@@ -26,7 +26,7 @@ import (
 )
 
 var (
-	cacheSize = flag.Uint64("cache_size", 64<<20, "Amount of data to hold in ram at any given time.")
+	cacheSize = flag.Int64("cache_size", 64<<20, "Amount of data to hold in ram at any given time.")
 	port      = flag.Int("port", 0, "Port to listen on")
 )
 

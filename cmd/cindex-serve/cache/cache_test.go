@@ -43,7 +43,7 @@ func (r *racingLoader) Load(_ context.Context, name string, _ uint64, value []by
 func TestRacingLoad(t *testing.T) {
 	maxProc := runtime.GOMAXPROCS(0)
 	var loader racingLoader
-	c := New(context.Background(), uint64(maxProc), &loader)
+	c := New(context.Background(), int64(maxProc), &loader)
 
 	start := time.Now()
 	var wg sync.WaitGroup
@@ -74,13 +74,13 @@ func TestRacingLoad(t *testing.T) {
 				func() {
 					c.mu.Lock()
 					defer c.mu.Unlock()
-					if v := c.available + c.inLRU + c.inUse; v != uint64(maxProc) {
+					if v := c.available + c.inLRU + c.inUse; v != int64(maxProc) {
 						t.Errorf("Bad book keeping: got: %v want: %v. available: %v inLRU: %v inUse: %v", v, maxProc, c.available, c.inLRU, c.inUse)
 					}
-					if uint64(c.lru.Len()) != c.inLRU {
+					if int64(c.lru.Len()) != c.inLRU {
 						t.Errorf("Bad LRU accounting. Got %v, want %v", c.lru.Len(), c.inLRU)
 					}
-					if uint64(len(c.items)) != c.inLRU+c.inUse {
+					if int64(len(c.items)) != c.inLRU+c.inUse {
 						t.Errorf("Bad map accounting. Got %v, want %v", len(c.items), c.inLRU+c.inUse)
 					}
 				}()

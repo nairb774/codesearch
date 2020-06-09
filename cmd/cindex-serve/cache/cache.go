@@ -20,7 +20,7 @@ type CacheLoader interface {
 	Load(ctx context.Context, name string, offset uint64, body []byte) error
 }
 
-func New(ctx context.Context, available uint64, loader CacheLoader) *Cache {
+func New(ctx context.Context, available int64, loader CacheLoader) *Cache {
 	return &Cache{
 		workCtx:   ctx,
 		loader:    loader,
@@ -37,14 +37,17 @@ type Cache struct {
 	items map[index.SHA256]Entry
 	lru   list.List // *string (keys) - use * to avoid allocation.
 
-	available uint64 // Can immediately allocate
-	inLRU     uint64 // count=0
-	inUse     uint64 // count>0
+	available int64 // Can immediately allocate (may be negative).
+	inLRU     int64 // count=0
+	inUse     int64 // count>0
 }
 
 type LoadParams struct {
 	Start  uint64
 	Length uint32
+
+	// If true, then resource limits are ignored, and loads are alwyas allowed.
+	IgnoreLimit bool
 }
 
 func (c *Cache) Acquire(key index.SHA256, name string, params LoadParams) Entry {
@@ -84,16 +87,16 @@ func (c *Cache) tryLoad(key index.SHA256, name string, params LoadParams) (Entry
 		return e, nil
 	}
 
-	tokens := uint64(params.Length)
-	if c.available+c.inLRU < tokens {
+	tokens := int64(params.Length)
+	if !params.IgnoreLimit && c.available+c.inLRU < tokens {
 		return nil, ErrMemoryPressure
 	}
 
-	for c.available < tokens {
+	for c.available < tokens && c.lru.Len() > 0 {
 		key := *(c.lru.Remove(c.lru.Back()).(*index.SHA256))
 		tokens := c.items[key].(*entry).allocatedSize()
-		c.available += uint64(tokens)
-		c.inLRU -= uint64(tokens)
+		c.available += tokens
+		c.inLRU -= tokens
 		delete(c.items, key)
 	}
 
@@ -116,7 +119,7 @@ func (c *Cache) tryLoad(key index.SHA256, name string, params LoadParams) (Entry
 		l.err = c.loader.Load(ctx, name, params.Start, l.entry.body)
 		if l.err == nil {
 			if got := sha256.Sum256(l.entry.body); got != key {
-				l.err = fmt.Errorf("%064x with %v got %064x", key, params, got)
+				l.err = fmt.Errorf("key %064x with %v got %064x", key, params, got)
 			}
 		}
 		c.finish(l)
@@ -265,4 +268,4 @@ func (e *entry) acquire(c *Cache) {
 }
 
 func (e *entry) Get(context.Context) ([]byte, error) { return e.body, nil }
-func (e *entry) allocatedSize() uint64               { return uint64(len(e.body)) }
+func (e *entry) allocatedSize() int64                { return int64(len(e.body)) }
