@@ -84,8 +84,8 @@ func (p *PostingLists) FindTrigram(trigram uint32, bitmap *roaring.Bitmap) error
 	return nil
 }
 
-func (i *IndexShard) PostingQuery(q *index.Query) *roaring.Bitmap {
-	return i.Lists(nil).PostingQuery(q, nil)
+func (i *IndexShard) PostingQuery(q *index.Query, filter *roaring.Bitmap) *roaring.Bitmap {
+	return i.Lists(nil).PostingQuery(q, filter)
 }
 
 func (p *PostingLists) PostingQuery(q *index.Query, filter *roaring.Bitmap) *roaring.Bitmap {

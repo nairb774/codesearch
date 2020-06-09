@@ -1,8 +1,10 @@
 syntax = "proto3";
 
-option go_package = "github.com/nairb774/codesearch/cmd/cindex-serve/service";
+option go_package = "github.com/google/codesearch/cmd/cindex-serve/service";
 
 package codesearch;
+
+import "expr/expr.proto";
 
 message Doc {
   uint32 id = 1;
@@ -27,7 +29,11 @@ message SearchShardRequest {
   string shard_id = 1;
   // Required.
   bytes shard_sha256 = 2;
-  string expression = 3;
+  Expression expression = 3;
+
+  // When matching against files, consider this as a prefix. Likely shoudl end
+  // in some sort of separator as all paths are un-prefixed.
+  string path_prefix = 4;
 }
 
 message SearchShardResponse {

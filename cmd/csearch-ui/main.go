@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/codesearch/cmd/cindex-serve/service"
+	"github.com/google/codesearch/expr"
 	"google.golang.org/grpc"
 )
 
@@ -89,7 +90,7 @@ var searchPage = template.Must(template.New("search").Parse(`
 	{{range .Results}}
 		{{$basePath := printf "https://%s/blob/%s/%s" .Repo .Commit .Doc.Path}}
 		<div class="file">
-			<a href="{{$basePath}}"><div class="file-header">{{.Repo}} : {{.Doc.Path}}</div></a>
+			<a href="{{$basePath}}"><div class="file-header">{{.Repo}}/{{.Doc.Path}}</div></a>
 			{{range .Doc.Snippets}}
 				<a href="{{$basePath}}#L{{.FirstLine}}">
 					<div class="snippet">
@@ -124,6 +125,11 @@ func (s *server) Search(w http.ResponseWriter, req *http.Request) error {
 	}
 
 	if query != "" {
+		expr, err := expr.Parse(query)
+		if err != nil {
+			return err
+		}
+
 		resp, err := s.meta.ListRepoRefs(ctx, &service.ListRepoRefsRequest{})
 		if err != nil {
 			return err
@@ -133,12 +139,12 @@ func (s *server) Search(w http.ResponseWriter, req *http.Request) error {
 			resp, err := s.search.SearchShard(ctx, &service.SearchShardRequest{
 				ShardId:     repoRef.GetShard().GetId(),
 				ShardSha256: repoRef.GetShard().GetSha256(),
-				Expression:  query,
+				Expression:  expr,
+				PathPrefix:  repoRef.GetRepoName() + "/",
 			})
 			if err != nil {
 				return err
 			}
-			// urlBase := fmt.Sprintf("https://%v/blob/%v", repoRef.GetRepoName(), repoRef.GetCommitHash())
 			for _, doc := range resp.GetDocs() {
 				data.Results = append(data.Results, result{
 					Repo:   repoRef.GetRepoName(),

@@ -68,6 +68,9 @@ table IndexShard {
   // If present, raw data is stored inline, and all files are stored without
   // sha256 hashes (would be redundant).
   raw: [ubyte];
+
+  // For all docs, this is the max length of all paths.
+  max_path_length: uint32;
 }
 
 // root_type IndexShard;

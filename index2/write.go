@@ -380,27 +380,34 @@ func postingListsWrite(builder *flatbuffers.Builder, o postingListsW) flatbuffer
 }
 
 type indexShardW struct {
-	docs  flatbuffers.UOffsetT
-	lists flatbuffers.UOffsetT
-	raw   flatbuffers.UOffsetT
+	docs          flatbuffers.UOffsetT
+	lists         flatbuffers.UOffsetT
+	raw           flatbuffers.UOffsetT
+	maxPathLength uint32
 }
 
 func indexShardWrite(builder *flatbuffers.Builder, o indexShardW) flatbuffers.UOffsetT {
 	IndexShardStart(builder)
+	IndexShardAddMaxPathLength(builder, o.maxPathLength)
 	IndexShardAddRaw(builder, o.raw)
 	IndexShardAddLists(builder, o.lists)
 	IndexShardAddDocs(builder, o.docs)
 	return IndexShardEnd(builder)
 }
 
-func (i *IndexWriter) flushDocs(builder *flatbuffers.Builder, inlineRaw bool) flatbuffers.UOffsetT {
+func (i *IndexWriter) flushDocs(builder *flatbuffers.Builder, inlineRaw bool) (flatbuffers.UOffsetT, uint32) {
 	docs := make([]flatbuffers.UOffsetT, len(i.docs))
+	var maxPathLength int
 	for idx := len(i.docs) - 1; idx >= 0; idx-- {
 		doc := i.docs[idx]
 
 		var sha256 *SHA256
 		if !inlineRaw {
 			sha256 = &doc.ref.sha256
+		}
+
+		if maxPathLength < len(doc.path) {
+			maxPathLength = len(doc.path)
 		}
 
 		docs[idx] = docWrite(builder, docW{
@@ -414,7 +421,7 @@ func (i *IndexWriter) flushDocs(builder *flatbuffers.Builder, inlineRaw bool) fl
 		})
 	}
 
-	return uOffsetTVector(builder, docs)
+	return uOffsetTVector(builder, docs), uint32(maxPathLength)
 }
 
 func (i *IndexWriter) flushPostingLists(builder *flatbuffers.Builder) (flatbuffers.UOffsetT, error) {
@@ -471,10 +478,12 @@ func (i *IndexWriter) ToBytes() ([]byte, error) {
 		raw = builder.CreateByteVector(flatRaw)
 	}
 
+	docs, maxPathLength := i.flushDocs(builder, raw != 0)
 	builder.FinishWithFileIdentifier(indexShardWrite(builder, indexShardW{
-		docs:  i.flushDocs(builder, raw != 0),
-		lists: postingLists,
-		raw:   raw,
+		docs:          docs,
+		lists:         postingLists,
+		raw:           raw,
+		maxPathLength: maxPathLength,
 	}), []byte("IXS2"))
 
 	return builder.FinishedBytes(), nil

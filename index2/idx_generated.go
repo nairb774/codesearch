@@ -695,8 +695,20 @@ func (rcv *IndexShard) MutateRaw(j int, n byte) bool {
 	return false
 }
 
+func (rcv *IndexShard) MaxPathLength() uint32 {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
+	if o != 0 {
+		return rcv._tab.GetUint32(o + rcv._tab.Pos)
+	}
+	return 0
+}
+
+func (rcv *IndexShard) MutateMaxPathLength(n uint32) bool {
+	return rcv._tab.MutateUint32Slot(10, n)
+}
+
 func IndexShardStart(builder *flatbuffers.Builder) {
-	builder.StartObject(3)
+	builder.StartObject(4)
 }
 func IndexShardAddDocs(builder *flatbuffers.Builder, docs flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(docs), 0)
@@ -712,6 +724,9 @@ func IndexShardAddRaw(builder *flatbuffers.Builder, raw flatbuffers.UOffsetT) {
 }
 func IndexShardStartRawVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(1, numElems, 1)
+}
+func IndexShardAddMaxPathLength(builder *flatbuffers.Builder, maxPathLength uint32) {
+	builder.PrependUint32Slot(3, maxPathLength, 0)
 }
 func IndexShardEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()

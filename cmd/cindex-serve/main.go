@@ -12,10 +12,13 @@ import (
 	"regexp"
 	"regexp/syntax"
 	"sort"
+	"sync"
 
+	"github.com/RoaringBitmap/roaring"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/google/codesearch/cmd/cindex-serve/cache"
 	"github.com/google/codesearch/cmd/cindex-serve/service"
+	"github.com/google/codesearch/expr"
 	oldindex "github.com/google/codesearch/index"
 	"github.com/google/codesearch/index2"
 	"github.com/google/codesearch/repo"
@@ -90,28 +93,335 @@ type server struct {
 
 var _ service.SearchShardServiceServer = (*server)(nil)
 
+type Filterer interface {
+	Filter(universe *roaring.Bitmap) (*roaring.Bitmap, error)
+}
+
+type queryFilterer struct {
+	shard *index.IndexShard
+	query *oldindex.Query
+}
+
+func (m *queryFilterer) Filter(universe *roaring.Bitmap) (*roaring.Bitmap, error) {
+	return m.shard.PostingQuery(m.query, universe), nil
+}
+
+type fileFilterer struct {
+	shard  *index.IndexShard
+	prefix string
+	expr   *regexp.Regexp
+	match  bool
+}
+
+func (f *fileFilterer) Filter(universe *roaring.Bitmap) (*roaring.Bitmap, error) {
+	if universe == nil {
+		return f.scanAll()
+	}
+
+	ret := roaring.New()
+
+	pfx := make([]byte, len(f.prefix), len(f.prefix)+int(f.shard.MaxPathLength()))
+	copy(pfx, f.prefix)
+
+	block := make([]uint32, 256)
+	var doc index.Doc
+	iter := universe.ManyIterator()
+	for n := iter.NextMany(block); n > 0; n = iter.NextMany(block) {
+		i := 0
+
+		for j := 0; j < n; j++ {
+			f.shard.Docs(&doc, int(block[j]))
+			v := append(pfx, doc.Path()...)
+			if f.expr.Match(v) == f.match {
+				block[i] = block[j]
+				i++
+			}
+		}
+
+		ret.AddMany(block[:i])
+	}
+
+	return ret, nil
+}
+
+func (f *fileFilterer) scanAll() (*roaring.Bitmap, error) {
+	ret := roaring.New()
+
+	pfx := make([]byte, len(f.prefix), len(f.prefix)+int(f.shard.MaxPathLength()))
+	copy(pfx, f.prefix)
+
+	block := make([]uint32, 0, 256)
+	var doc index.Doc
+	for i, l := 0, f.shard.DocsLength(); i < l; i++ {
+		f.shard.Docs(&doc, i)
+		v := append(pfx, doc.Path()...)
+		if f.expr.Match(v) == f.match {
+			block = append(block, uint32(i))
+			if len(block) == cap(block) {
+				ret.AddMany(block)
+				block = block[:0]
+			}
+		}
+	}
+
+	ret.AddMany(block)
+
+	return ret, nil
+}
+
+type requestLoader struct {
+	cache   *cache.Cache
+	mu      sync.Mutex
+	entries []cache.Entry
+	data    map[index.SHA256][]byte
+}
+
+func (r *requestLoader) Get(ctx context.Context, key index.SHA256, name string, params cache.LoadParams) ([]byte, error) {
+	e, b := func() (cache.Entry, []byte) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		b, ok := r.data[key]
+		if ok {
+			return nil, b
+		}
+		e := r.cache.Acquire(key, name, params)
+		r.entries = append(r.entries, e)
+		return e, nil
+	}()
+	var err error
+	if e != nil {
+		b, err = e.Get(ctx)
+		if err == nil {
+			func() {
+				r.mu.Lock()
+				defer r.mu.Unlock()
+				r.data[key] = b
+			}()
+		}
+	}
+	return b, err
+}
+
+func (r *requestLoader) ReleaseAll() {
+	for _, e := range r.entries {
+		// TODO: Add batch release.
+		r.cache.Release(e)
+	}
+}
+
+type contentFilterer struct {
+	ctx    context.Context
+	name   string
+	loader *requestLoader
+	shard  *index.IndexShard
+
+	// All expressions must pass.
+	expr  []*regexp.Regexp
+	match bool
+}
+
+func (c *contentFilterer) Filter(universe *roaring.Bitmap) (*roaring.Bitmap, error) {
+	if universe == nil {
+		return c.scanAll()
+	}
+
+	ret := roaring.New()
+
+	block := make([]uint32, 256)
+	var doc index.Doc
+	iter := universe.ManyIterator()
+	for n := iter.NextMany(block); n > 0; n = iter.NextMany(block) {
+		i := 0
+
+		for j := 0; j < n; j++ {
+			c.shard.Docs(&doc, int(block[j]))
+			keep, err := c.scan(&doc)
+			if err != nil {
+				return nil, err
+			}
+			if keep {
+				block[i] = block[j]
+				i++
+			}
+		}
+
+		ret.AddMany(block[:i])
+	}
+
+	return ret, nil
+}
+
+func (c *contentFilterer) scanAll() (*roaring.Bitmap, error) {
+	ret := roaring.New()
+
+	block := make([]uint32, 0, 256)
+	var doc index.Doc
+	for i, l := 0, c.shard.DocsLength(); i < l; i++ {
+		c.shard.Docs(&doc, i)
+		keep, err := c.scan(&doc)
+		if err != nil {
+			return nil, err
+		}
+		if keep {
+			block = append(block, uint32(i))
+			if len(block) == cap(block) {
+				ret.AddMany(block)
+				block = block[:0]
+			}
+		}
+	}
+
+	ret.AddMany(block)
+
+	return ret, nil
+}
+
+func (c *contentFilterer) scan(doc *index.Doc) (bool, error) {
+	var rng index.ByteRange
+	doc.Range(&rng)
+
+	var docInnerBytes []byte
+	if rb := c.shard.RawBytes(); rb != nil {
+		start := rng.Start()
+		docInnerBytes = rb[start : start+uint64(rng.Length())]
+	} else {
+		var err error
+		docInnerBytes, err = c.loader.Get(c.ctx, doc.Hash(), c.name, cache.LoadParams{
+			Start:       rng.Start(),
+			Length:      rng.Length(),
+			IgnoreLimit: true,
+		})
+		if err != nil {
+			return false, err
+		}
+	}
+
+	for _, expr := range c.expr {
+		if expr.Match(docInnerBytes) != c.match {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (s *server) toFilterChain(ctx context.Context, loader *requestLoader, shard *index.IndexShard, req *service.SearchShardRequest) ([]Filterer, string, error) {
+	// Order to apply parts:
+	// -> Language Selection (positive and negative)
+	// -> Positive content trigram selection
+	// -> File path selection
+	// -> Negative content selection (remember trigrams!)
+	// -> Positive content selection
+	// -> Snippet
+
+	byCode := make(map[expr.ExpressionPart_Code][]*expr.ExpressionPart)
+	for _, part := range req.GetExpression().GetParts() {
+		byCode[part.GetCode()] = append(byCode[part.GetCode()], part)
+	}
+
+	var filters []Filterer
+
+	if l := byCode[expr.ExpressionPart_LANGUAGE]; len(l) > 0 {
+		return nil, "", status.Errorf(codes.Unimplemented, "language selection not implemented")
+	}
+
+	var positiveContentExprs []*regexp.Regexp
+	var snippetParts []*syntax.Regexp
+	for _, part := range byCode[expr.ExpressionPart_SNIPPET] {
+		if part.GetNegated() {
+			return nil, "", status.Error(codes.InvalidArgument, "unable to negate snippets")
+		}
+
+		re, err := regexp.Compile(part.GetExpression())
+		if err != nil {
+			return nil, "", err
+		}
+		positiveContentExprs = append(positiveContentExprs, re)
+
+		syn, err := syntax.Parse(part.GetExpression(), syntax.Perl)
+		if err != nil {
+			return nil, "", err
+		}
+		snippetParts = append(snippetParts, syn)
+		filters = append(filters, &queryFilterer{
+			shard: shard,
+			query: oldindex.RegexpQuery(syn),
+		})
+	}
+
+	for _, part := range byCode[expr.ExpressionPart_MATCH] {
+		if part.GetNegated() {
+			continue
+		}
+
+		re, err := regexp.Compile(part.GetExpression())
+		if err != nil {
+			return nil, "", err
+		}
+		positiveContentExprs = append(positiveContentExprs, re)
+
+		syn, err := syntax.Parse(part.GetExpression(), syntax.Perl)
+		if err != nil {
+			return nil, "", err
+		}
+
+		filters = append(filters, &queryFilterer{
+			shard: shard,
+			query: oldindex.RegexpQuery(syn),
+		})
+	}
+
+	for _, part := range byCode[expr.ExpressionPart_FILE] {
+		re, err := regexp.Compile(part.GetExpression())
+		if err != nil {
+			return nil, "", err
+		}
+		filters = append(filters, &fileFilterer{
+			shard:  shard,
+			expr:   re,
+			prefix: req.GetPathPrefix(),
+			match:  !part.GetNegated(),
+		})
+	}
+
+	for _, part := range byCode[expr.ExpressionPart_MATCH] {
+		if !part.GetNegated() {
+			continue
+		}
+		return nil, "", status.Error(codes.Unimplemented, "negated content matches not yet available")
+	}
+
+	if len(positiveContentExprs) > 0 {
+		filters = append(filters, &contentFilterer{
+			ctx:    ctx,
+			name:   req.GetShardId() + ".raw",
+			loader: loader,
+			shard:  shard,
+			expr:   positiveContentExprs,
+			match:  true,
+		})
+	}
+
+	return filters, (&syntax.Regexp{
+		Op:  syntax.OpAlternate,
+		Sub: snippetParts,
+	}).String(), nil
+}
+
 func (s *server) SearchShard(ctx context.Context, req *service.SearchShardRequest) (*service.SearchShardResponse, error) {
 	if len(req.GetShardSha256()) != len(index.SHA256{}) {
 		return nil, status.Errorf(codes.InvalidArgument, "shard_sha256 wrong length %v, want %v", len(req.GetShardSha256()), len(index.SHA256{}))
 	}
 
-	syn, err := syntax.Parse(req.GetExpression(), syntax.Perl)
-	if err != nil {
-		return nil, err
+	loader := requestLoader{
+		cache: s.cache,
+		data:  make(map[index.SHA256][]byte),
 	}
-	q := oldindex.RegexpQuery(syn)
-
-	re, err := regexp.Compile(req.GetExpression())
-	if err != nil {
-		return nil, err
-	}
+	defer loader.ReleaseAll()
 
 	var sha index.SHA256
 	copy(sha[:], req.GetShardSha256())
-	e := s.cache.Acquire(sha, req.GetShardId(), cache.LoadParams{})
-	defer s.cache.Release(e)
 
-	v, err := e.Get(ctx)
+	v, err := loader.Get(ctx, sha, req.GetShardId(), cache.LoadParams{})
 	if err != nil {
 		if err == cache.ErrMemoryPressure {
 			err = status.Errorf(codes.ResourceExhausted, "unable to load shard - cache full")
@@ -120,7 +430,25 @@ func (s *server) SearchShard(ctx context.Context, req *service.SearchShardReques
 	}
 
 	idx := index.Open(v)
-	post := idx.PostingQuery(q)
+
+	filters, snippetRE, err := s.toFilterChain(ctx, &loader, idx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	re, err := regexp.Compile(snippetRE)
+	if err != nil {
+		return nil, err
+	}
+
+	var post *roaring.Bitmap
+	for _, f := range filters {
+		var err error
+		post, err = f.Filter(post)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	var resp service.SearchShardResponse
 	resp.Matches = uint32(post.GetCardinality())
@@ -140,14 +468,13 @@ func (s *server) SearchShard(ctx context.Context, req *service.SearchShardReques
 			start := rng.Start()
 			docInnerBytes = rb[start : start+uint64(rng.Length())]
 		} else {
-			e := s.cache.Acquire(doc.Hash(), req.GetShardId()+".raw", cache.LoadParams{
-				Start:  rng.Start(),
-				Length: rng.Length(),
-			})
-			defer s.cache.Release(e)
-
 			var err error
-			docInnerBytes, err = e.Get(ctx)
+			docInnerBytes, err = loader.Get(ctx, doc.Hash(), req.GetShardId()+".raw", cache.LoadParams{
+				Start:       rng.Start(),
+				Length:      rng.Length(),
+				IgnoreLimit: true,
+			})
+
 			if err != nil {
 				panic(err)
 			}
