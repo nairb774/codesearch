@@ -4,6 +4,7 @@ go 1.14
 
 require (
 	github.com/RoaringBitmap/roaring v0.4.23
+	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d
 	github.com/go-git/go-git/v5 v5.0.0
 	github.com/golang/protobuf v1.4.0
 	github.com/google/flatbuffers v1.12.0

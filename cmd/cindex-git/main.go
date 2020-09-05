@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -15,10 +16,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bgentry/go-netrc/netrc"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/codesearch/cmd/cindex-serve/service"
 	"github.com/google/codesearch/index2"
 	"google.golang.org/grpc"
@@ -33,6 +37,8 @@ var (
 	repoURL  = flag.String("url", "", "Url of repo to index")
 	repoName = flag.String("name", "", "Name of the repo. If empty, will be determined from the URL")
 	ref      = refFlag{plumbing.HEAD}
+
+	netrcPath = flag.String("netrc", "", "If set, this file will be used as a netrc file for performing the fetch.")
 
 	force = flag.Bool("force", false, "Force indexing even if shard exists")
 )
@@ -117,6 +123,28 @@ func simplifyURL(url string) string {
 	return url
 }
 
+type netrcAuth struct {
+	path string
+	rc   *netrc.Netrc
+}
+
+var _ githttp.AuthMethod = (*netrcAuth)(nil)
+
+func (rc *netrcAuth) String() string { return rc.path }
+func (rc *netrcAuth) Name() string   { return "netrc-auth" }
+func (rc *netrcAuth) SetAuth(r *http.Request) {
+	m := rc.rc.FindMachine(r.URL.Hostname())
+	if m == nil {
+		return
+	}
+	if m.Login != "" && m.Password != "" {
+		r.SetBasicAuth(m.Login, m.Password)
+	} else if m.Account != "" {
+		r.Header.Add("Authorization", fmt.Sprintf("Bearer %s", m.Account))
+	}
+
+}
+
 func syncRemote(ctx context.Context, repo *git.Repository, url string, ref plumbing.ReferenceName) (plumbing.ReferenceName, error) {
 	hash := sha256.Sum256([]byte(url))
 	hexHash := hex.EncodeToString(hash[:])
@@ -149,12 +177,25 @@ func syncRemote(ctx context.Context, repo *git.Repository, url string, ref plumb
 	refSpec := config.RefSpec(fmt.Sprintf("%v:%v", ref, mappedRef))
 	log.Printf("Fetching %v", refSpec)
 
+	var auth transport.AuthMethod
+	if path := *netrcPath; path != "" {
+		n, err := netrc.ParseFile(path)
+		if err != nil {
+			log.Fatal(err)
+		}
+		auth = &netrcAuth{
+			path: path,
+			rc:   n,
+		}
+	}
+
 	_ = depth // TODO: Fix shallow handling in go-git
 	err = r.FetchContext(ctx, &git.FetchOptions{
 		RefSpecs: []config.RefSpec{refSpec},
 		Depth:    0, // depth,
 		Progress: os.Stdout,
 		Tags:     git.NoTags,
+		Auth:     auth,
 	})
 	if err == git.NoErrAlreadyUpToDate {
 		err = nil
