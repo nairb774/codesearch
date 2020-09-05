@@ -9,8 +9,10 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -115,7 +117,7 @@ func simplifyURL(url string) string {
 	return url
 }
 
-func syncRemote(repo *git.Repository, url string, ref plumbing.ReferenceName) (plumbing.ReferenceName, error) {
+func syncRemote(ctx context.Context, repo *git.Repository, url string, ref plumbing.ReferenceName) (plumbing.ReferenceName, error) {
 	hash := sha256.Sum256([]byte(url))
 	hexHash := hex.EncodeToString(hash[:])
 	mappedRef := plumbing.NewRemoteReferenceName(hexHash, ref.String())
@@ -148,7 +150,7 @@ func syncRemote(repo *git.Repository, url string, ref plumbing.ReferenceName) (p
 	log.Printf("Fetching %v", refSpec)
 
 	_ = depth // TODO: Fix shallow handling in go-git
-	err = r.Fetch(&git.FetchOptions{
+	err = r.FetchContext(ctx, &git.FetchOptions{
 		RefSpecs: []config.RefSpec{refSpec},
 		Depth:    0, // depth,
 		Progress: os.Stdout,
@@ -165,6 +167,16 @@ func main() {
 	flag.Parse()
 
 	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	sigchan := make(chan os.Signal, 1)
+	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigchan)
+	go func() {
+		for range sigchan {
+			cancel()
+		}
+	}()
 
 	conn, err := grpc.DialContext(ctx, *indexMetadataService, grpc.WithInsecure())
 	if err != nil {
@@ -178,7 +190,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	localRefName, err := syncRemote(gitRepo, *repoURL, ref.ReferenceName)
+	localRefName, err := syncRemote(ctx, gitRepo, *repoURL, ref.ReferenceName)
 	if err != nil {
 		log.Fatalf("While syncing remote: %v", err)
 	}
