@@ -187,7 +187,13 @@ func main() {
 
 	gitRepo, err := git.PlainOpen(*repoPath)
 	if err != nil {
-		log.Fatal(err)
+		if err != git.ErrRepositoryNotExists {
+			log.Fatal(err)
+		}
+		gitRepo, err = git.PlainInit(*repoPath, true /*isBare*/)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	localRefName, err := syncRemote(ctx, gitRepo, *repoURL, ref.ReferenceName)
