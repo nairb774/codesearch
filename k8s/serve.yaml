@@ -1,0 +1,183 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storage
+  namespace: codesearch
+spec:
+  selector:
+    matchLabels:
+      app: storage
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: storage
+    spec:
+      containers:
+      - name: storage
+        image: ko://github.com/google/codesearch/cmd/storage
+        args:
+        - -port=8080
+        - -storage_path=/opt/shards
+        ports:
+        - name: grpc
+          containerPort: 8080
+        resources:
+          requests:
+            memory: 50Mi
+        volumeMounts:
+        - mountPath: /opt/shards
+          name: shards
+      volumes:
+      - name: shards
+        hostPath:
+          path: /tmp/shards
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: storage
+  namespace: codesearch
+spec:
+  selector:
+    app: storage
+  ports:
+  - name: grpc
+    port: 443
+    targetPort: grpc
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cindex-serve
+  namespace: codesearch
+spec:
+  selector:
+    matchLabels:
+      app: cindex-serve
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: cindex-serve
+    spec:
+      containers:
+      - name: serve
+        image: ko://github.com/google/codesearch/cmd/cindex-serve
+        args:
+        - -port=8080
+        - -cache_size=1073741824 #! 1Gi
+        - -storage_service=storage.codesearch.svc.cluster.local:443
+        env:
+        - name: XDG_CONFIG_HOME
+          value: /opt/config
+        ports:
+        - name: grpc
+          containerPort: 8080
+        resources:
+          requests:
+            memory: 1.25Gi
+        volumeMounts:
+        - mountPath: /opt/config/codesearch
+          name: storage
+      volumes:
+      - name: storage
+        hostPath:
+          path: /tmp/storage
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: index-metadata
+  namespace: codesearch
+spec:
+  selector:
+    app: cindex-serve
+  ports:
+  - name: grpc
+    port: 443
+    targetPort: grpc
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: index-metadata-external
+  namespace: codesearch
+spec:
+  selector:
+    app: cindex-serve
+  ports:
+  - port: 8801
+    nodePort: 31483
+    targetPort: grpc
+  type: LoadBalancer
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: search-shard
+  namespace: codesearch
+spec:
+  selector:
+    app: cindex-serve
+  ports:
+  - name: grpc
+    port: 443
+    targetPort: grpc
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: csearch-ui
+  namespace: codesearch
+spec:
+  selector:
+    matchLabels:
+      app: csearch-ui
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: csearch-ui
+    spec:
+      containers:
+      - name: serve
+        image: ko://github.com/google/codesearch/cmd/csearch-ui
+        args:
+        - -port=8080
+        - -index_metadata_service=index-metadata.codesearch.svc.cluster.local:443
+        - -search_shard_service=search-shard.codesearch.svc.cluster.local:443
+        ports:
+        - name: grpc
+          containerPort: 8080
+        resources:
+          requests:
+            memory: 128Mi
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  namespace: codesearch
+spec:
+  selector:
+    app: csearch-ui
+  ports:
+  - port: 8800
+    nodePort: 31482
+    targetPort: grpc
+  type: LoadBalancer

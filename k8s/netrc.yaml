@@ -1,0 +1,13 @@
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: netrc
+  namespace: codesearch
+spec:
+  encryptedData:
+    netrc: ""
+  template:
+    metadata:
+      name: netrc
+      namespace: codesearch
+

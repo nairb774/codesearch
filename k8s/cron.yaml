@@ -1,0 +1,53 @@
+#@ load("@ytt:data", "data")
+
+#@ for repo_name in dir(data.values.repos):
+#@   repo = getattr(data.values.repos, repo_name)
+#@   url = getattr(repo, "url", repo)
+#@   ref = getattr(repo, "ref", "refs/heads/master")
+
+---
+
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: #@ "repo-" + repo_name
+  namespace: codesearch
+spec:
+  concurrencyPolicy: Replace
+  schedule: "@midnight"
+  successfulJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: index
+            image: ko://github.com/google/codesearch/cmd/cindex-git
+            args:
+            - -netrc=/opt/netrc/netrc
+            - -index_metadata_service=index-metadata.codesearch.svc.cluster.local:443
+            - -storage_service=storage.codesearch.svc.cluster.local:443
+            - #@ "-ref=" + ref
+            - -repo=/opt/repo
+            - #@ "-url=" + url
+            resources:
+              requests:
+                memory: 1Gi
+            volumeMounts:
+            - mountPath: /opt/netrc
+              name: netrc
+            - mountPath: /opt/repo
+              name: repo
+          restartPolicy: Never
+          volumes:
+          - name: netrc
+            secret:
+              defaultMode: 0400
+              secretName: netrc
+          - name: repo
+            hostPath:
+              path: /tmp/index-repo
+
+---
+
+#@ end

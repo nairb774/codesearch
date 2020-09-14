@@ -1,0 +1,28 @@
+#@data/values
+---
+
+repos:
+  datadog-agent: https://github.com/DataDog/datadog-agent.git
+  datadog-documentation: https://github.com/DataDog/documentation.git
+  datadog-integrations-core: https://github.com/DataDog/integrations-core.git
+  datadog-integrations-extras: https://github.com/DataDog/integrations-extras.git
+  datadog-helm-charts: https://github.com/DataDog/helm-charts.git
+
+  envoyproxy-envoy: https://github.com/envoyproxy/envoy.git
+
+  helm-charts: https://github.com/helm/charts.git
+
+  istio-api: https://github.com/istio/api.git
+  istio-istio: https://github.com/istio/istio.git
+  istio-pkg: https://github.com/istio/pkg.git
+  istio-proxy: https://github.com/istio/proxy.git
+
+  jetstack-cert-manager: https://github.com/jetstack/cert-manager.git
+
+  knative-net-istio: https://github.com/knative/net-istio.git
+  knative-pkg: https://github.com/knative/pkg.git
+  knative-serving: https://github.com/knative/serving.git
+
+  kubernetes-autoscaler: https://github.com/kubernetes/autoscaler.git
+
+  protobufjs-protobufjs: https://github.com/protobufjs/protobuf.js.git
