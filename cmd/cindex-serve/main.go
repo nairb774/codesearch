@@ -5,19 +5,21 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
-	"path/filepath"
 	"regexp"
 	"regexp/syntax"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/RoaringBitmap/roaring"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/google/codesearch/cmd/cindex-serve/cache"
 	"github.com/google/codesearch/cmd/cindex-serve/service"
+	ss "github.com/google/codesearch/cmd/storage/service"
 	"github.com/google/codesearch/expr"
 	oldindex "github.com/google/codesearch/index"
 	"github.com/google/codesearch/index2"
@@ -28,30 +30,67 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const suffixSeparator = "||"
+
 var (
-	cacheSize = flag.Int64("cache_size", 64<<20, "Amount of data to hold in ram at any given time.")
-	port      = flag.Int("port", 0, "Port to listen on")
+	storageService = flag.String("storage_service", "", "Address of storage service.")
+	cacheSize      = flag.Int64("cache_size", 64<<20, "Amount of data to hold in ram at any given time.")
+	port           = flag.Int("port", 0, "Port to listen on")
 )
 
-type cacheLoader struct{}
+type cacheLoader struct {
+	ss ss.StorageServiceClient
+}
 
-func (cacheLoader) Size(ctx context.Context, name string) (int32, error) {
-	s, err := os.Stat(filepath.Join(index.ShardDir(), name))
+func (c cacheLoader) Size(ctx context.Context, name string) (int32, error) {
+	req := &ss.GetShardMetadataRequest{
+		ShardId: name,
+	}
+	if idx := strings.Index(name, suffixSeparator); idx >= 0 {
+		req.ShardId = name[:idx]
+		req.Suffix = name[idx+len(suffixSeparator):]
+	}
+	resp, err := c.ss.GetShardMetadata(ctx, req)
 	if err != nil {
 		return 0, err
 	}
-	return int32(s.Size()), nil
+	ret := int32(resp.GetLength())
+	if int64(ret) != resp.GetLength() {
+		return 0, fmt.Errorf("%q overflows with %d", name, resp.GetLength())
+	}
+	return ret, nil
 }
 
-func (cacheLoader) Load(ctx context.Context, name string, offset int64, body []byte) error {
-	f, err := os.Open(filepath.Join(index.ShardDir(), name))
+func (c cacheLoader) Load(ctx context.Context, name string, offset int64, body []byte) error {
+	req := &ss.ReadShardRequest{
+		ShardId: name,
+		Offset:  offset,
+		Length:  int32(len(body)),
+	}
+	if idx := strings.Index(name, suffixSeparator); idx >= 0 {
+		req.ShardId = name[:idx]
+		req.Suffix = name[idx+len(suffixSeparator):]
+	}
+
+	log.Printf("Loading %v", req)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stream, err := c.ss.ReadShard(ctx, req)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	log.Printf("Loading %s @ %v for %v", name, offset, len(body))
-	_, err = f.ReadAt(body, offset)
-	return err
+
+	for {
+		resp, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF && len(body) == 0 {
+				err = nil
+			}
+			return err
+		}
+		n := copy(body, resp.GetBlock())
+		body = body[n:]
+	}
 }
 
 func buildSnippets(doc *index.DocInner, matches [][2]int) []*service.Snippet {
@@ -393,7 +432,7 @@ func (s *server) toFilterChain(ctx context.Context, loader *requestLoader, shard
 	if len(positiveContentExprs) > 0 {
 		filters = append(filters, &contentFilterer{
 			ctx:    ctx,
-			name:   req.GetShardId() + ".raw",
+			name:   fmt.Sprintf("%s%s%s", req.GetShardId(), suffixSeparator, "raw"),
 			loader: loader,
 			shard:  shard,
 			expr:   positiveContentExprs,
@@ -798,8 +837,16 @@ func main() {
 	flag.Parse()
 	ctx := context.Background()
 
+	conn, err := grpc.DialContext(ctx, *storageService, grpc.WithInsecure())
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+
 	s := &server{
-		cache: cache.New(ctx, *cacheSize, cacheLoader{}),
+		cache: cache.New(ctx, *cacheSize, cacheLoader{
+			ss: ss.NewStorageServiceClient(conn),
+		}),
 	}
 
 	g := grpc.NewServer()

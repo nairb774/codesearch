@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+option go_package = "github.com/google/codesearch/cmd/simple-storage/service";
+
+package codesearch;
+
+message GetShardMetadataRequest {
+  string shard_id = 1;
+  string suffix = 2;
+}
+
+message GetShardMetadataResponse {
+  int64 length = 1;
+}
+
+message ReadShardRequest {
+  string shard_id = 1;
+  string suffix = 2;
+  int64 offset = 3;
+  // If length will cause out of bounds reads, an error is returned.
+  // Length must be >= 0.
+  int32 length = 4;
+}
+
+message ReadShardResponse {
+  bytes block = 1;
+}
+
+message WriteShardRequest {
+  // shard_id must be set in first message.
+  string shard_id = 1;
+  // suffix, if set, must be set in first message.
+  string suffix = 2;
+
+  // block may only be empty in first message.
+  bytes block = 3;
+}
+
+message WriteShardResponse {
+  bytes sha256 = 1;
+}
+
+service StorageService {
+  rpc GetShardMetadata(GetShardMetadataRequest) returns (GetShardMetadataResponse) {}
+  rpc ReadShard(ReadShardRequest) returns (stream ReadShardResponse) {}
+  rpc WriteShard(stream WriteShardRequest) returns (WriteShardResponse) {}
+}

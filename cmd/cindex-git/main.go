@@ -1,17 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -24,14 +24,18 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/codesearch/cmd/cindex-serve/service"
+	ss "github.com/google/codesearch/cmd/storage/service"
 	"github.com/google/codesearch/index2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
+const maxBlockSize = 64 << 10
+
 var (
 	indexMetadataService = flag.String("index_metadata_service", "localhost:8801", "Location to find the IndexMetadataService.")
+	storageService       = flag.String("storage_service", "", "Address of storage service.")
 	repoPath             = flag.String("repo", "", "Path to working repo")
 
 	repoURL  = flag.String("url", "", "Url of repo to index")
@@ -59,7 +63,23 @@ func (r *refFlag) Set(v string) error {
 }
 func (r *refFlag) String() string { return r.ReferenceName.String() }
 
-func writeShard(iw *index.IndexWriter, path string) (uint64, [sha256.Size]byte, error) {
+func streamBytes(stream ss.StorageService_WriteShardClient, b []byte) error {
+	var req ss.WriteShardRequest
+	for len(b) > 0 {
+		chunk := maxBlockSize
+		if chunk > len(b) {
+			chunk = len(b)
+		}
+		req.Block = b[:chunk]
+		if err := stream.Send(&req); err != nil {
+			return err
+		}
+		b = b[chunk:]
+	}
+	return nil
+}
+
+func writeShard(ctx context.Context, storage ss.StorageServiceClient, shardID string, iw *index.IndexWriter) (uint64, [sha256.Size]byte, error) {
 	b, err := iw.ToBytes()
 	l := uint64(len(b))
 	h := sha256.Sum256(b)
@@ -67,25 +87,81 @@ func writeShard(iw *index.IndexWriter, path string) (uint64, [sha256.Size]byte, 
 		return l, h, err
 	}
 
-	if err := ioutil.WriteFile(path, b, 0o666); err != nil {
+	if err := func() error {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		stream, err := storage.WriteShard(ctx)
+		if err != nil {
+			return err
+		}
+
+		if err := stream.Send(&ss.WriteShardRequest{
+			ShardId: shardID,
+		}); err != nil {
+			return err
+		}
+
+		if err := streamBytes(stream, b); err != nil {
+			return err
+		}
+
+		resp, err := stream.CloseAndRecv()
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(resp.GetSha256(), h[:]) {
+			return errors.New("corruption during write of shard")
+		}
+		return nil
+	}(); err != nil {
 		return l, h, err
 	}
 
-	if rb := iw.RawBytes(); len(rb) > 0 {
-		f, err := os.OpenFile(path+".raw", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+	rb := iw.RawBytes()
+	if len(rb) == 0 {
+		return l, h, nil
+	}
+
+	if err := func() error {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		stream, err := storage.WriteShard(ctx)
 		if err != nil {
-			return l, h, err
+			return err
 		}
 
+		if err := stream.Send(&ss.WriteShardRequest{
+			ShardId: shardID,
+			Suffix:  "raw",
+		}); err != nil {
+			return err
+		}
+
+		sum := sha256.New()
+
 		for _, b := range rb {
-			if _, err := f.Write(b); err != nil {
-				f.Close()
-				return l, h, err
+			if _, err := sum.Write(b); err != nil {
+				return fmt.Errorf("while calculating hash: %v", err)
+			}
+			if err := streamBytes(stream, b); err != nil {
+				return err
 			}
 		}
-		if err := f.Close(); err != nil {
-			return l, h, err
+
+		resp, err := stream.CloseAndRecv()
+		if err != nil {
+			return err
 		}
+
+		if !bytes.Equal(resp.GetSha256(), sum.Sum(nil)) {
+			return errors.New("corruption during write of shard raw suffix")
+		}
+
+		return nil
+	}(); err != nil {
+		return l, h, err
 	}
 
 	return l, h, nil
@@ -219,12 +295,19 @@ func main() {
 		}
 	}()
 
-	conn, err := grpc.DialContext(ctx, *indexMetadataService, grpc.WithInsecure())
+	indexMetadataConn, err := grpc.DialContext(ctx, *indexMetadataService, grpc.WithInsecure())
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
-	indexMetadata := service.NewIndexMetadataServiceClient(conn)
+	defer indexMetadataConn.Close()
+	indexMetadata := service.NewIndexMetadataServiceClient(indexMetadataConn)
+
+	ssConn, err := grpc.DialContext(ctx, *storageService, grpc.WithInsecure())
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ssConn.Close()
+	storage := ss.NewStorageServiceClient(ssConn)
 
 	gitRepo, err := git.PlainOpen(*repoPath)
 	if err != nil {
@@ -319,8 +402,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	path := filepath.Join(index.ShardDir(), resp.GetShard().GetId())
-	shardSize, sha256, err := writeShard(s, path)
+	shardSize, sha256, err := writeShard(ctx, storage, resp.GetShard().GetId(), s)
 	if err != nil {
 		log.Fatal(err)
 	}
