@@ -31,7 +31,7 @@ message SearchShardRequest {
   bytes shard_sha256 = 2;
   Expression expression = 3;
 
-  // When matching against files, consider this as a prefix. Likely shoudl end
+  // When matching against files, consider this as a prefix. Likely should end
   // in some sort of separator as all paths are un-prefixed.
   string path_prefix = 4;
 }

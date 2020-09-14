@@ -232,7 +232,7 @@ type SearchShardRequest struct {
 	// Required.
 	ShardSha256 []byte           `protobuf:"bytes,2,opt,name=shard_sha256,json=shardSha256,proto3" json:"shard_sha256,omitempty"`
 	Expression  *expr.Expression `protobuf:"bytes,3,opt,name=expression,proto3" json:"expression,omitempty"`
-	// When matching against files, consider this as a prefix. Likely shoudl end
+	// When matching against files, consider this as a prefix. Likely should end
 	// in some sort of separator as all paths are un-prefixed.
 	PathPrefix string `protobuf:"bytes,4,opt,name=path_prefix,json=pathPrefix,proto3" json:"path_prefix,omitempty"`
 }
