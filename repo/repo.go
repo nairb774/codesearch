@@ -240,8 +240,11 @@ type stateAction struct {
 var allowed = map[stateAction]State{
 	stateAction{"", allocate}: CreatingState,
 
-	stateAction{CreatingState, created}:   UnreferencedState,
-	stateAction{CreatingState, tombstone}: DeletingState,
+	stateAction{CreatingState, created}: UnreferencedState,
+	// A creating shard can be marked unreferenced - it will stay in the creating
+	// state until specified otherwise.
+	stateAction{CreatingState, unreferenced}: CreatingState,
+	stateAction{CreatingState, tombstone}:    DeletingState,
 
 	stateAction{UnreferencedState, unreferenced}: UnreferencedState,
 	stateAction{UnreferencedState, referenced}:   ReferencedState,
