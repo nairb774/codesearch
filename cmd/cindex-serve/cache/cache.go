@@ -16,8 +16,8 @@ var (
 )
 
 type CacheLoader interface {
-	Size(ctx context.Context, name string) (length uint32, err error)
-	Load(ctx context.Context, name string, offset uint64, body []byte) error
+	Size(ctx context.Context, name string) (length int32, err error)
+	Load(ctx context.Context, name string, offset int64, body []byte) error
 }
 
 func New(ctx context.Context, available int64, loader CacheLoader) *Cache {
@@ -43,8 +43,8 @@ type Cache struct {
 }
 
 type LoadParams struct {
-	Start  uint64
-	Length uint32
+	Start  int64
+	Length int32
 
 	// If true, then resource limits are ignored, and loads are alwyas allowed.
 	IgnoreLimit bool
@@ -80,6 +80,10 @@ func (c *Cache) innerAcquire(key index.SHA256) Entry {
 }
 
 func (c *Cache) tryLoad(key index.SHA256, name string, params LoadParams) (Entry, error) {
+	if params.Start < 0 || params.Length < 0 {
+		return nil, fmt.Errorf("bad params values: %+v", params)
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

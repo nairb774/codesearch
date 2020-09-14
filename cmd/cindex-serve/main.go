@@ -35,22 +35,22 @@ var (
 
 type cacheLoader struct{}
 
-func (cacheLoader) Size(ctx context.Context, name string) (uint32, error) {
+func (cacheLoader) Size(ctx context.Context, name string) (int32, error) {
 	s, err := os.Stat(filepath.Join(index.ShardDir(), name))
 	if err != nil {
 		return 0, err
 	}
-	return uint32(s.Size()), nil
+	return int32(s.Size()), nil
 }
 
-func (cacheLoader) Load(ctx context.Context, name string, offset uint64, body []byte) error {
+func (cacheLoader) Load(ctx context.Context, name string, offset int64, body []byte) error {
 	f, err := os.Open(filepath.Join(index.ShardDir(), name))
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	log.Printf("Loading %s @ %v for %v", name, offset, len(body))
-	_, err = f.ReadAt(body, int64(offset))
+	_, err = f.ReadAt(body, offset)
 	return err
 }
 
@@ -60,7 +60,7 @@ func buildSnippets(doc *index.DocInner, matches [][2]int) []*service.Snippet {
 	b := doc.DataBytes()
 	for i, pos := range matches {
 		block := pos[0] >> 12
-		lNum := uint32(bytes.Count(b[block<<12:pos[0]], []byte{'\n'}))
+		lNum := int32(bytes.Count(b[block<<12:pos[0]], []byte{'\n'}))
 		if block == 0 {
 			lNum++
 		} else {
@@ -283,7 +283,7 @@ func (c *contentFilterer) scan(doc *index.Doc) (bool, error) {
 	var docInnerBytes []byte
 	if rb := c.shard.RawBytes(); rb != nil {
 		start := rng.Start()
-		docInnerBytes = rb[start : start+uint64(rng.Length())]
+		docInnerBytes = rb[start : start+int64(rng.Length())]
 	} else {
 		var err error
 		docInnerBytes, err = c.loader.Get(c.ctx, doc.Hash(), c.name, cache.LoadParams{
@@ -466,7 +466,7 @@ func (s *server) SearchShard(ctx context.Context, req *service.SearchShardReques
 		var docInnerBytes []byte
 		if rb := idx.RawBytes(); rb != nil {
 			start := rng.Start()
-			docInnerBytes = rb[start : start+uint64(rng.Length())]
+			docInnerBytes = rb[start : start+int64(rng.Length())]
 		} else {
 			var err error
 			docInnerBytes, err = loader.Get(ctx, doc.Hash(), req.GetShardId()+".raw", cache.LoadParams{

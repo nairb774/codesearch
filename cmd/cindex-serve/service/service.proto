@@ -18,7 +18,7 @@ message Snippet {
   string lines = 1;
 
   // Line number of the first line in the snippet.
-  uint32 first_line = 2;
+  int32 first_line = 2;
 
   // Pairs of byte offsets indicating matches.
   repeated uint32 matches = 3;

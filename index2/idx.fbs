@@ -19,8 +19,8 @@ struct Sha256 {
 }
 
 struct ByteRange {
-  start: uint64;
-  length: uint32;
+  start: int64;
+  length: int32;
 }
 
 enum DocType : byte {
@@ -32,7 +32,7 @@ enum DocType : byte {
 table Doc {
   path: string (required);
   range: ByteRange; // DocInner
-  size: uint32;
+  size: int32;
   mod_ns: int64;
   type: DocType;
   // Only set, if top level raw is not set.
@@ -44,7 +44,7 @@ table DocInner {
 
   // Maps the block number to the number of the line containing the first byte
   // of the block.
-  block_to_line: [uint32];
+  block_to_line: [int32];
 
   data: [ubyte];
 }
@@ -70,7 +70,7 @@ table IndexShard {
   raw: [ubyte];
 
   // For all docs, this is the max length of all paths.
-  max_path_length: uint32;
+  max_path_length: int32;
 }
 
 // root_type IndexShard;

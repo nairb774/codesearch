@@ -44,7 +44,7 @@ type IndexWriter struct {
 	docs []*docMeta
 
 	raw       [][]byte
-	rawLength uint64
+	rawLength int64
 }
 
 func (i *IndexWriter) Clear() {
@@ -55,7 +55,7 @@ func (i *IndexWriter) DocCount() int { return len(i.docs) }
 
 type docMeta struct {
 	path string
-	size uint32
+	size int32
 	mod  time.Time
 	typ  DocType
 
@@ -64,8 +64,8 @@ type docMeta struct {
 
 type innerDocRef struct {
 	sha256 SHA256
-	start  uint64
-	length uint32
+	start  int64
+	length int32
 }
 
 func (i *IndexWriter) addFile(path string) (uint32, *docMeta) {
@@ -153,9 +153,9 @@ func (i *IndexWriter) addDocInnerToRaw(o docInnerW) innerDocRef {
 	b := flatbuffers.NewBuilder(1024 + len(o.data) + len(o.blockToLine)*4)
 	b.Finish(docInnerWrite(b, o))
 	hash := sha256.Sum256(b.FinishedBytes())
-	start, length := i.rawLength, uint32(len(b.FinishedBytes()))
+	start, length := i.rawLength, int32(len(b.FinishedBytes()))
 	i.raw = append(i.raw, b.FinishedBytes())
-	i.rawLength += uint64(length)
+	i.rawLength += int64(length)
 	return innerDocRef{
 		sha256: hash,
 		start:  start,
@@ -196,7 +196,7 @@ func (i *IndexWriter) Add(path string) error {
 	})
 
 	id, doc := i.addFile(path)
-	doc.size = uint32(stat.Size())
+	doc.size = int32(stat.Size())
 	doc.mod = stat.ModTime()
 	if mode := stat.Mode(); mode&os.ModeSymlink != 0 {
 		doc.typ = DocTypeSymlink
@@ -254,7 +254,7 @@ func (i *IndexWriter) AddObject(lastEdit time.Time, f *object.File) error {
 	})
 
 	id, doc := i.addFile(f.Name)
-	doc.size = uint32(f.Size)
+	doc.size = int32(f.Size)
 	doc.mod = lastEdit
 	doc.typ = docType
 	doc.ref = ref
@@ -336,9 +336,9 @@ func docInnerWrite(builder *flatbuffers.Builder, o docInnerW) flatbuffers.UOffse
 
 type docW struct {
 	path   flatbuffers.UOffsetT
-	start  uint64
-	length uint32
-	size   uint32
+	start  int64
+	length int32
+	size   int32
 	modNs  int64
 	typ    DocType
 	sha256 *SHA256
@@ -383,7 +383,7 @@ type indexShardW struct {
 	docs          flatbuffers.UOffsetT
 	lists         flatbuffers.UOffsetT
 	raw           flatbuffers.UOffsetT
-	maxPathLength uint32
+	maxPathLength int32
 }
 
 func indexShardWrite(builder *flatbuffers.Builder, o indexShardW) flatbuffers.UOffsetT {
@@ -395,7 +395,7 @@ func indexShardWrite(builder *flatbuffers.Builder, o indexShardW) flatbuffers.UO
 	return IndexShardEnd(builder)
 }
 
-func (i *IndexWriter) flushDocs(builder *flatbuffers.Builder, inlineRaw bool) (flatbuffers.UOffsetT, uint32) {
+func (i *IndexWriter) flushDocs(builder *flatbuffers.Builder, inlineRaw bool) (flatbuffers.UOffsetT, int32) {
 	docs := make([]flatbuffers.UOffsetT, len(i.docs))
 	var maxPathLength int
 	for idx := len(i.docs) - 1; idx >= 0; idx-- {
@@ -421,7 +421,7 @@ func (i *IndexWriter) flushDocs(builder *flatbuffers.Builder, inlineRaw bool) (f
 		})
 	}
 
-	return uOffsetTVector(builder, docs), uint32(maxPathLength)
+	return uOffsetTVector(builder, docs), int32(maxPathLength)
 }
 
 func (i *IndexWriter) flushPostingLists(builder *flatbuffers.Builder) (flatbuffers.UOffsetT, error) {

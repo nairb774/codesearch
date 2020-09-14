@@ -186,25 +186,25 @@ func (rcv *ByteRange) Table() flatbuffers.Table {
 	return rcv._tab.Table
 }
 
-func (rcv *ByteRange) Start() uint64 {
-	return rcv._tab.GetUint64(rcv._tab.Pos + flatbuffers.UOffsetT(0))
+func (rcv *ByteRange) Start() int64 {
+	return rcv._tab.GetInt64(rcv._tab.Pos + flatbuffers.UOffsetT(0))
 }
-func (rcv *ByteRange) MutateStart(n uint64) bool {
-	return rcv._tab.MutateUint64(rcv._tab.Pos+flatbuffers.UOffsetT(0), n)
-}
-
-func (rcv *ByteRange) Length() uint32 {
-	return rcv._tab.GetUint32(rcv._tab.Pos + flatbuffers.UOffsetT(8))
-}
-func (rcv *ByteRange) MutateLength(n uint32) bool {
-	return rcv._tab.MutateUint32(rcv._tab.Pos+flatbuffers.UOffsetT(8), n)
+func (rcv *ByteRange) MutateStart(n int64) bool {
+	return rcv._tab.MutateInt64(rcv._tab.Pos+flatbuffers.UOffsetT(0), n)
 }
 
-func CreateByteRange(builder *flatbuffers.Builder, start uint64, length uint32) flatbuffers.UOffsetT {
+func (rcv *ByteRange) Length() int32 {
+	return rcv._tab.GetInt32(rcv._tab.Pos + flatbuffers.UOffsetT(8))
+}
+func (rcv *ByteRange) MutateLength(n int32) bool {
+	return rcv._tab.MutateInt32(rcv._tab.Pos+flatbuffers.UOffsetT(8), n)
+}
+
+func CreateByteRange(builder *flatbuffers.Builder, start int64, length int32) flatbuffers.UOffsetT {
 	builder.Prep(8, 16)
 	builder.Pad(4)
-	builder.PrependUint32(length)
-	builder.PrependUint64(start)
+	builder.PrependInt32(length)
+	builder.PrependInt64(start)
 	return builder.Offset()
 }
 type Doc struct {
@@ -248,16 +248,16 @@ func (rcv *Doc) Range(obj *ByteRange) *ByteRange {
 	return nil
 }
 
-func (rcv *Doc) Size() uint32 {
+func (rcv *Doc) Size() int32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(8))
 	if o != 0 {
-		return rcv._tab.GetUint32(o + rcv._tab.Pos)
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
 	}
 	return 0
 }
 
-func (rcv *Doc) MutateSize(n uint32) bool {
-	return rcv._tab.MutateUint32Slot(8, n)
+func (rcv *Doc) MutateSize(n int32) bool {
+	return rcv._tab.MutateInt32Slot(8, n)
 }
 
 func (rcv *Doc) ModNs() int64 {
@@ -306,8 +306,8 @@ func DocAddPath(builder *flatbuffers.Builder, path flatbuffers.UOffsetT) {
 func DocAddRange(builder *flatbuffers.Builder, range_ flatbuffers.UOffsetT) {
 	builder.PrependStructSlot(1, flatbuffers.UOffsetT(range_), 0)
 }
-func DocAddSize(builder *flatbuffers.Builder, size uint32) {
-	builder.PrependUint32Slot(2, size, 0)
+func DocAddSize(builder *flatbuffers.Builder, size int32) {
+	builder.PrependInt32Slot(2, size, 0)
 }
 func DocAddModNs(builder *flatbuffers.Builder, modNs int64) {
 	builder.PrependInt64Slot(3, modNs, 0)
@@ -354,11 +354,11 @@ func (rcv *DocInner) Hash(obj *GitHash) *GitHash {
 	return nil
 }
 
-func (rcv *DocInner) BlockToLine(j int) uint32 {
+func (rcv *DocInner) BlockToLine(j int) int32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
 		a := rcv._tab.Vector(o)
-		return rcv._tab.GetUint32(a + flatbuffers.UOffsetT(j*4))
+		return rcv._tab.GetInt32(a + flatbuffers.UOffsetT(j*4))
 	}
 	return 0
 }
@@ -371,11 +371,11 @@ func (rcv *DocInner) BlockToLineLength() int {
 	return 0
 }
 
-func (rcv *DocInner) MutateBlockToLine(j int, n uint32) bool {
+func (rcv *DocInner) MutateBlockToLine(j int, n int32) bool {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(6))
 	if o != 0 {
 		a := rcv._tab.Vector(o)
-		return rcv._tab.MutateUint32(a+flatbuffers.UOffsetT(j*4), n)
+		return rcv._tab.MutateInt32(a+flatbuffers.UOffsetT(j*4), n)
 	}
 	return false
 }
@@ -695,16 +695,16 @@ func (rcv *IndexShard) MutateRaw(j int, n byte) bool {
 	return false
 }
 
-func (rcv *IndexShard) MaxPathLength() uint32 {
+func (rcv *IndexShard) MaxPathLength() int32 {
 	o := flatbuffers.UOffsetT(rcv._tab.Offset(10))
 	if o != 0 {
-		return rcv._tab.GetUint32(o + rcv._tab.Pos)
+		return rcv._tab.GetInt32(o + rcv._tab.Pos)
 	}
 	return 0
 }
 
-func (rcv *IndexShard) MutateMaxPathLength(n uint32) bool {
-	return rcv._tab.MutateUint32Slot(10, n)
+func (rcv *IndexShard) MutateMaxPathLength(n int32) bool {
+	return rcv._tab.MutateInt32Slot(10, n)
 }
 
 func IndexShardStart(builder *flatbuffers.Builder) {
@@ -725,8 +725,8 @@ func IndexShardAddRaw(builder *flatbuffers.Builder, raw flatbuffers.UOffsetT) {
 func IndexShardStartRawVector(builder *flatbuffers.Builder, numElems int) flatbuffers.UOffsetT {
 	return builder.StartVector(1, numElems, 1)
 }
-func IndexShardAddMaxPathLength(builder *flatbuffers.Builder, maxPathLength uint32) {
-	builder.PrependUint32Slot(3, maxPathLength, 0)
+func IndexShardAddMaxPathLength(builder *flatbuffers.Builder, maxPathLength int32) {
+	builder.PrependInt32Slot(3, maxPathLength, 0)
 }
 func IndexShardEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
