@@ -293,13 +293,14 @@ func main() {
 
 		// Found an existing shard, update to that:
 		if len(shards.GetShardIds()) > 0 {
-			if _, err := indexMetadata.UpdateRepoShard(ctx, &service.UpdateRepoShardRequest{
+			req := &service.UpdateRepoShardRequest{
 				RepoName:   *repoName,
 				Ref:        ref.ReferenceName.String(),
 				CommitHash: c.Hash.String(),
 				ShardId:    shards.GetShardIds()[0],
-			}); err != nil {
-				log.Fatal(err)
+			}
+			if _, err := indexMetadata.UpdateRepoShard(ctx, req); err != nil {
+				log.Fatalf("%v %v", req, err)
 			}
 			return
 		}
